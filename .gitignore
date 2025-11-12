@@ -5,3 +5,8 @@ rustbpe/target/
 dev-ignore/
 report.md
 eval_bundle/
+
+# Container Env
+.cache
+.rustup
+uv.lock
