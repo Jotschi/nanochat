@@ -137,7 +137,7 @@ def load_hf_model(hf_path: str, device):
     model = AutoModelForCausalLM.from_pretrained(hf_path)
     model.to(device)
     model.eval()
-    max_seq_len = 1024 if "openai-community/gpt2" in hf_path else None
+    max_seq_len = 256 if "openai-community/gpt2" in hf_path else None
     model = ModelWrapper(model, max_seq_len=max_seq_len)
     # Load the tokenizer
     tokenizer = HuggingFaceTokenizer.from_pretrained(hf_path)

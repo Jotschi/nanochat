@@ -3,7 +3,7 @@ from collections import deque
 import torch
 
 from nanochat.common import get_dist_info
-from nanochat.dataset import parquets_iter_batched
+from nanochat.kleiner_astronaut_dataset import parquets_iter_batched
 from nanochat.tokenizer import get_tokenizer
 
 def tokenizing_distributed_data_loader(B, T, split, tokenizer_threads=4, tokenizer_batch_size=128, device="cuda"):

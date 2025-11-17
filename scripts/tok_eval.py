@@ -3,7 +3,7 @@ Evaluate compression ratio of the tokenizer.
 """
 
 from nanochat.tokenizer import get_tokenizer, RustBPETokenizer
-from nanochat.dataset import parquets_iter_batched
+from nanochat.kleiner_astronaut_dataset import parquets_iter_batched
 
 # Random text I got from a random website this morning
 news_text = r"""
@@ -146,7 +146,7 @@ Photosynthesis is a photochemical energy transduction process in which light-har
 # The tokenizer was trained on data from earlier shards, so it has seen this data
 train_docs = next(parquets_iter_batched(split="train"))
 train_text = "\n".join(train_docs)
-val_docs = next(parquets_iter_batched(split="val"))
+val_docs = next(parquets_iter_batched(split="test"))
 val_text = "\n".join(val_docs)
 
 all_text = [
