@@ -36,8 +36,8 @@ device_type = "" # cuda|cpu|mps (empty => autodetect)
 model_tag = None # model tag to load the model from (base model or midtrained model)
 step = None # step to load the model from (base model or midtrained model)
 dtype = "bfloat16"
-num_iterations = -1 # explicit number of steps of the optimization (-1 = disable)
-max_seq_len = 2048
+num_iterations = 1000 # explicit number of steps of the optimization (-1 = disable)
+max_seq_len = 1536
 device_batch_size = 32
 unembedding_lr = 0.004
 embedding_lr = 0.2
@@ -45,6 +45,7 @@ matrix_lr = 0.02
 init_lr_frac = 1.0 # initial learning rate is this fraction of the base learning rate
 weight_decay = 0.0
 eval_every = 150 # -1 = disable
+save_every = 250
 eval_tokens = 20*524288
 total_batch_size = 524288
 dry_run = 0 # dry_run=1 is for experiments: we will log to wandb but we won't write checkpoints or report
@@ -76,8 +77,10 @@ depth = model.config.n_layer
 num_flops_per_token = model.estimate_flops()
 tokens_per_fwdbwd = device_batch_size * max_seq_len # tokens per iteration for a single rank
 world_tokens_per_fwdbwd = tokens_per_fwdbwd * ddp_world_size # total tokens per iteration for all ranks
-assert total_batch_size % world_tokens_per_fwdbwd == 0
+#assert total_batch_size % world_tokens_per_fwdbwd == 0
 grad_accum_steps = total_batch_size // world_tokens_per_fwdbwd
+print0(f"Device batch size: {device_batch_size}")
+print0(f"ddp_world_size: {ddp_world_size}")
 print0(f"Tokens / micro-batch / rank: {device_batch_size} x {max_seq_len} = {tokens_per_fwdbwd:,}")
 print0(f"Tokens / micro-batch: {world_tokens_per_fwdbwd:,}")
 print0(f"Total batch size {total_batch_size:,} => gradient accumulation steps: {grad_accum_steps}")
@@ -94,20 +97,16 @@ for opt in optimizers:
 
 # Midtraining data mixture and DataLoader
 base_dir = get_base_dir()
-identity_conversations_filepath = os.path.join(base_dir, "identity_conversations.jsonl")
+nano_astronaut_conversations_train_filepath = os.path.join(base_dir, "kleiner_astronaut_conversations_v2_train.jsonl")
+nano_astronaut_conversations_val_filepath = os.path.join(base_dir, "kleiner_astronaut_conversations_v2_val.jsonl")
 train_dataset = TaskMixture([
-    SmolTalk(split="train"), # 460K rows of general conversations
-    MMLU(subset="auxiliary_train", split="train"), # 100K rows of multiple choice problems drawn from ARC, MC_TEST, OBQA, RACE
-    GSM8K(subset="main", split="train"), # 8K rows teaching simple math and (calculator) tool use
-    CustomJSON(filepath=identity_conversations_filepath), # 1000 rows of synthetic identity conversations
-    CustomJSON(filepath=identity_conversations_filepath), # let's do 2 epochs of these
-    SimpleSpelling(size=200000, split="train"), # 200K rows of Simple Spelling (e.g. spell the word 'apple')
-    SpellingBee(size=80000, split="train"), # 80K rows of Spelling Bee (e.g. how many 'r' are in 'strawberry'?)
-]) # total: 460K + 100K + 8K + 200K + 80K = 848K rows
+    CustomJSON(filepath=nano_astronaut_conversations_train_filepath),
+])
 val_dataset = TaskMixture([
-    SmolTalk(split="test"), # 24K rows in test set
-    MMLU(subset="all", split="test", stop=5200), # 14K rows in test set, use only 5.2K to match the train ratios
-    GSM8K(subset="main", split="test", stop=420), # 1.32K rows in test set, use only 420 to match the train ratios
+    CustomJSON(filepath=nano_astronaut_conversations_val_filepath)
+    #SmolTalk(split="test"), # 24K rows in test set
+    #MMLU(subset="all", split="test", stop=5200), # 14K rows in test set, use only 5.2K to match the train ratios
+    #GSM8K(subset="main", split="test", stop=420), # 1.32K rows in test set, use only 420 to match the train ratios
 ]) # total: 24K + 14K + 1.32K ~= 39K rows
 # DataLoader is defined here, it emits inputs, targets : 2D tensors of shape (device_batch_size, max_seq_len)
 # A big problem is that we don't know the final num_iterations in advance. So we create
@@ -115,11 +114,14 @@ val_dataset = TaskMixture([
 last_step = False # we will toggle this to True when we reach the end of the dataset
 approx_progress = 0.0 # will go from 0 to 1 over the course of the epoch
 def mid_data_generator(split):
+    print("Generating: " + str(split))
     global last_step, approx_progress
     assert split in {"train", "val"}, "split must be 'train' or 'val'"
     dataset = train_dataset if split == "train" else val_dataset
     dataset_size = len(dataset)
     assert dataset_size > 0
+    print("Dataset len: " + str(dataset_size))
+    print("Device batch size: " + str(device_batch_size))
     needed_tokens = device_batch_size * max_seq_len + 1 # to form one training batch of inputs,targets
     token_buffer = deque()
     # CUDA supports memory pinning for faster transfers between CPU and GPU:
@@ -140,6 +142,7 @@ def mid_data_generator(split):
         # Stopping condition to respect num_iterations, if given
         it += 1
         if num_iterations > 0 and it >= num_iterations:
+            print("Triggering last step: " + str(it))
             last_step = True # toggle last_step to True, which will terminate the training loop
         # Build up inputs/targets and yield
         for i in range(needed_tokens):
@@ -204,6 +207,29 @@ while True:
             "val/bpb": val_bpb,
         })
         model.train()
+        
+    if master_process and step % save_every == 0:
+        output_dirname = model_tag if model_tag else f"d{depth}" # e.g. d12
+        checkpoint_dir = os.path.join(base_dir, "mid_checkpoints", output_dirname)
+        save_checkpoint(
+            checkpoint_dir,
+            step,
+            orig_model.state_dict(),
+            [opt.state_dict() for opt in optimizers], # TODO: make sure saving across ranks is done correctly
+            {
+                "step": step,
+                "val_bpb": val_bpb, # loss at last step
+                "model_config": {
+                    "sequence_len": max_seq_len,
+                    "vocab_size": tokenizer.get_vocab_size(),
+                    "n_layer": depth,
+                    "n_head": model.config.n_head,
+                    "n_kv_head": model.config.n_kv_head,
+                    "n_embd": model.config.n_embd,
+                },
+                "user_config": user_config, # inputs to the training script
+            }
+        )
 
     # save checkpoint at the end of the run (only on master process)
     if master_process and last_step and not dry_run:

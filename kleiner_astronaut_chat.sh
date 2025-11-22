@@ -53,7 +53,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 source "$HOME/.cargo/env"
 
 # Build the rustbpe Tokenizer
-uv run maturin develop --release --manifest-path rustbpe/Cargo.toml
+#uv run maturin develop --release --manifest-path rustbpe/Cargo.toml
 
 # Download the first ~2B characters of pretraining dataset
 # look at dev/repackage_data_reference.py for details on how this data was prepared
@@ -66,9 +66,9 @@ uv run maturin develop --release --manifest-path rustbpe/Cargo.toml
 #python -m nanochat.kleiner_astronaut_dataset -n 240 &
 #DATASET_DOWNLOAD_PID=$!
 # train the tokenizer with vocab size 2**16 = 65536 on ~2B characters of data
-python -m scripts.tok_train --max_chars=2000000000
+#python -m scripts.tok_train --max_chars=2000000000
 # evaluate the tokenizer (report compression ratio etc.)
-python -m scripts.tok_eval
+#python -m scripts.tok_eval
 
 # -----------------------------------------------------------------------------
 # Base model (pretraining)
@@ -88,24 +88,26 @@ DEPTH=15
 BATCH_SIZE=8
 
 # pretrain the model
-torchrun --standalone --nproc_per_node=$NPROC_PER_NODE -m scripts.base_train -- --depth=$DEPTH  --device_batch_size=$BATCH_SIZE --run=$WANDB_RUN
-echo "DONE"
-exit 0
+#torchrun --standalone --nproc_per_node=$NPROC_PER_NODE -m scripts.base_train -- --depth=$DEPTH  --device_batch_size=$BATCH_SIZE --run=$WANDB_RUN
+
 # evaluate the model on a larger chunk of train/val data and draw some samples
-torchrun --standalone --nproc_per_node=$NPROC_PER_NODE -m scripts.base_loss
+#torchrun --standalone --nproc_per_node=$NPROC_PER_NODE -m scripts.base_loss
 # evaluate the model on CORE tasks
-torchrun --standalone --nproc_per_node=$NPROC_PER_NODE -m scripts.base_eval
+#torchrun --standalone --nproc_per_node=$NPROC_PER_NODE -m scripts.base_eval
 
 # -----------------------------------------------------------------------------
 # Midtraining (teach the model conversation special tokens, tool use, multiple choice)
 
 # download 2.3MB of synthetic identity conversations to impart a personality to nanochat
 # see dev/gen_sft_data.py for details on how this data was prepared and to get a sense of how you can easily tune it
-curl -L -o $NANOCHAT_BASE_DIR/identity_conversations.jsonl https://karpathy-public.s3.us-west-2.amazonaws.com/identity_conversations.jsonl
+#curl -L -o $NANOCHAT_BASE_DIR/identity_conversations.jsonl https://karpathy-public.s3.us-west-2.amazonaws.com/identity_conversations.jsonl
 
 # run midtraining and eval the model
-torchrun --standalone --nproc_per_node=$NPROC_PER_NODE -m scripts.mid_train -- --run=$WANDB_RUN
-torchrun --standalone --nproc_per_node=$NPROC_PER_NODE -m scripts.chat_eval -- -i mid
+torchrun --standalone --nproc_per_node=$NPROC_PER_NODE -m scripts.mid_train -- --device_batch_size=$BATCH_SIZE --run=$WANDB_RUN
+echo "DONE"
+exit 0
+
+torchrun --standalone --nproc_per_node=$NPROC_PER_NODE -m scripts.chat_eval -- --device_batch_size=$BATCH_SIZE -i mid
 
 # -----------------------------------------------------------------------------
 # Supervised Finetuning (domain adaptation to each sequence all by itself per row)

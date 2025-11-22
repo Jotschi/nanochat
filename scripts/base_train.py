@@ -36,7 +36,7 @@ run = "dummy" # wandb run name default ("dummy" is special - we won't log to wan
 device_type = "" # cuda|cpu|mps (empty => autodetect good device type default, in order: CUDA > MPS > CPU)
 # Model architecture
 depth = 20 # the depth of the Transformer model to train, rest of the kwargs are derived
-max_seq_len = 256 # max context length
+max_seq_len = 1536 # max context length
 # Training horizon. Only one of these 3 will be used, in this order of precedence.
 num_iterations = -1 # explicit number of steps of the optimization (-1 = disable)
 target_flops = -1.0 # calculate num_iterations to reach target_flops. Useful for scaling laws experiments (-1 = disable)
@@ -99,7 +99,7 @@ print0(f"num_kv_heads: {num_kv_heads}")
 # figure out the needed gradient accumulation to reach the desired total batch size
 tokens_per_fwdbwd = device_batch_size * max_seq_len # tokens per iteration for a single rank
 world_tokens_per_fwdbwd = tokens_per_fwdbwd * ddp_world_size # total tokens per iteration for all ranks
-assert total_batch_size % world_tokens_per_fwdbwd == 0
+#assert total_batch_size % world_tokens_per_fwdbwd == 0
 grad_accum_steps = total_batch_size // world_tokens_per_fwdbwd
 print0(f"Tokens / micro-batch / rank: {device_batch_size} x {max_seq_len} = {tokens_per_fwdbwd:,}")
 print0(f"Tokens / micro-batch: {world_tokens_per_fwdbwd:,}")
@@ -222,13 +222,13 @@ for step in range(num_iterations + 1):
     if master_process and (last_step or (step > 0 and step % sample_every == 0)):
         model.eval()
         prompts = [
-            "The capital of France is",
-            "The chemical symbol of gold is",
-            "If yesterday was Friday, then tomorrow will be",
-            "The opposite of hot is",
-            "The planets of the solar system are:",
-            "My favorite color is",
-            "If 5*x + 3 = 13, then x is",
+            "Es war einmal",
+            "Im Wurmloch",
+            "Die Rakete",
+            "Der Name vom Roboter ist",
+            "Sein Jetpack war",
+            "In der Zeitmaschine",
+            "Die Sonne war"
         ]
         engine = Engine(orig_model, tokenizer) # use orig_model to avoid recompilation
         for prompt in prompts:
