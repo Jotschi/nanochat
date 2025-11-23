@@ -36,7 +36,7 @@ device_type = "" # cuda|cpu|mps (empty => autodetect)
 model_tag = None # model tag to load the model from (base model or midtrained model)
 step = None # step to load the model from (base model or midtrained model)
 dtype = "bfloat16"
-num_iterations = 1000 # explicit number of steps of the optimization (-1 = disable)
+num_iterations = 100000 # explicit number of steps of the optimization (-1 = disable)
 max_seq_len = 1536
 device_batch_size = 32
 unembedding_lr = 0.004
@@ -46,8 +46,8 @@ init_lr_frac = 1.0 # initial learning rate is this fraction of the base learning
 weight_decay = 0.0
 eval_every = 150 # -1 = disable
 save_every = 250
-eval_tokens = 20*524288
-total_batch_size = 524288
+eval_tokens = 20*524280
+total_batch_size = 524280
 dry_run = 0 # dry_run=1 is for experiments: we will log to wandb but we won't write checkpoints or report
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 exec(open(os.path.join('nanochat', 'configurator.py')).read()) # overrides from command line or config file
@@ -100,10 +100,10 @@ base_dir = get_base_dir()
 nano_astronaut_conversations_train_filepath = os.path.join(base_dir, "kleiner_astronaut_conversations_v2_train.jsonl")
 nano_astronaut_conversations_val_filepath = os.path.join(base_dir, "kleiner_astronaut_conversations_v2_val.jsonl")
 train_dataset = TaskMixture([
-    CustomJSON(filepath=nano_astronaut_conversations_train_filepath),
+    CustomJSON(5000, filepath=nano_astronaut_conversations_train_filepath)
 ])
 val_dataset = TaskMixture([
-    CustomJSON(filepath=nano_astronaut_conversations_val_filepath)
+    CustomJSON(1, filepath=nano_astronaut_conversations_val_filepath)
     #SmolTalk(split="test"), # 24K rows in test set
     #MMLU(subset="all", split="test", stop=5200), # 14K rows in test set, use only 5.2K to match the train ratios
     #GSM8K(subset="main", split="test", stop=420), # 1.32K rows in test set, use only 420 to match the train ratios

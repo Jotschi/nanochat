@@ -26,6 +26,7 @@ import torch.distributed as dist
 from nanochat.common import compute_init, compute_cleanup, print0, get_base_dir, DummyWandb
 from nanochat.checkpoint_manager import save_checkpoint, load_model
 from nanochat.engine import Engine
+from tasks.customjson import CustomJSON
 from tasks.gsm8k import GSM8K
 
 # RL hyperparameters
@@ -70,8 +71,11 @@ engine = Engine(model, tokenizer) # for sampling rollouts
 # -----------------------------------------------------------------------------
 # Rollout / sampling generator loop that yields batches of examples for training
 
-train_task = GSM8K(subset="main", split="train")
-val_task = GSM8K(subset="main", split="test")
+nano_astronaut_conversations_train_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_v2_train.jsonl")
+nano_astronaut_conversations_val_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_v2_val.jsonl")
+
+train_task = CustomJSON(5, filepath=nano_astronaut_conversations_train_filepath)
+val_task = CustomJSON(1, filepath=nano_astronaut_conversations_val_filepath)
 num_steps = (len(train_task) // examples_per_step) * num_epochs
 print0(f"Calculated number of steps: {num_steps}")
 

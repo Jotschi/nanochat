@@ -85,7 +85,7 @@ def main():
     for prompt in prompts:
         tokens = tokenizer(prompt, prepend="<|bos|>")
         with autocast_ctx:
-            sample, _ = engine.generate_batch(tokens, num_samples=1, max_tokens=16, temperature=0)
+            sample, _ = engine.generate_batch(tokens, num_samples=1, max_tokens=32, temperature=0.25)
         print0(tokenizer.decode(sample[0]))
 
 

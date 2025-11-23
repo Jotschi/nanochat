@@ -14,7 +14,7 @@ class CustomJSON(Task):
     Example line: [{"role":"user","content":"Hi"},{"role":"assistant","content":"Hello"}]
     """
 
-    def __init__(self, filepath, **kwargs):
+    def __init__(self, it, filepath, **kwargs):
         super().__init__(**kwargs)
         self.filepath = filepath
         self.conversations = []
@@ -49,7 +49,9 @@ class CustomJSON(Task):
                         assert message["role"] == expected_role, f"Message {i} has role {message['role']} but should be {expected_role}"
                         assert isinstance(message["content"], str), f"Message {i} content must be a string"
 
-                    self.conversations.append(messages)
+                    for n in range(it):
+                      #print("Len: " + str(len(self.conversations)))
+                      self.conversations.append(messages)
 
         self.length = len(self.conversations)
 
