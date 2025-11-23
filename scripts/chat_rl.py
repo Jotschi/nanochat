@@ -71,8 +71,8 @@ engine = Engine(model, tokenizer) # for sampling rollouts
 # -----------------------------------------------------------------------------
 # Rollout / sampling generator loop that yields batches of examples for training
 
-nano_astronaut_conversations_train_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_v2_train.jsonl")
-nano_astronaut_conversations_val_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_v2_val.jsonl")
+nano_astronaut_conversations_train_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_v3.jsonl")
+nano_astronaut_conversations_val_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_v3.jsonl")
 
 train_task = CustomJSON(5, filepath=nano_astronaut_conversations_train_filepath)
 val_task = CustomJSON(1, filepath=nano_astronaut_conversations_val_filepath)
