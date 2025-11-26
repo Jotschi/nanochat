@@ -48,13 +48,13 @@ for split_name in ["train", "val"]:
 samples = []
 if ddp_rank == 0:
     prompts = [
-        "The capital of France is",
-        "The chemical symbol of gold is",
-        "If yesterday was Friday, then tomorrow will be",
-        "The opposite of hot is",
-        "The planets of the solar system are:",
-        "My favorite color is",
-        "If 5*x + 3 = 13, then x is",
+        "Es war einmal",
+        "Im Wurmloch",
+        "Die Rakete",
+        "Der Name vom Roboter ist",
+        "Sein Jetpack war",
+        "In der Zeitmaschine",
+        "Die Sonne war",
     ]
     engine = Engine(model, tokenizer)
     for prompt in prompts:

@@ -33,9 +33,9 @@ from tasks.gsm8k import GSM8K
 run = "dummy" # wandb run name
 source = "sft" # mid|sft
 dtype = "bfloat16"
-device_batch_size = 8 # no forward pass will go above this to not OOM
-examples_per_step = 16 # in total and across all ranks (note: examples, not samples/completions!)
-num_samples = 16 # number of samples per example (/question)
+device_batch_size = 4 # no forward pass will go above this to not OOM
+examples_per_step = 8 # in total and across all ranks (note: examples, not samples/completions!)
+num_samples = 8 # number of samples per example (/question)
 max_new_tokens = 1536
 temperature = 1.0
 top_k = 50 # TODO: try None?
@@ -71,8 +71,8 @@ engine = Engine(model, tokenizer) # for sampling rollouts
 # -----------------------------------------------------------------------------
 # Rollout / sampling generator loop that yields batches of examples for training
 
-nano_astronaut_conversations_train_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_v3.jsonl")
-nano_astronaut_conversations_val_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_v3.jsonl")
+nano_astronaut_conversations_train_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_v3_train.jsonl")
+nano_astronaut_conversations_val_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_v3_val.jsonl")
 
 train_task = CustomJSON(5, filepath=nano_astronaut_conversations_train_filepath)
 val_task = CustomJSON(1, filepath=nano_astronaut_conversations_val_filepath)
