@@ -16,6 +16,7 @@ podman run --rm -it \
     --name nanochat-train \
     --shm-size 1g \
 	-v .:/opt/build \
+        -v .cargo:/root/.cargo \
 	-v .cache:/root/.cache \
 	-v .rustup:/root/.rustup \
     $IMAGE_NAME:$VERSION  bash

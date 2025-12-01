@@ -11,3 +11,4 @@ eval_bundle/
 .cache
 .rustup
 uv.lock
+.cargo

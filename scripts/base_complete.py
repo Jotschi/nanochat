@@ -73,6 +73,9 @@ def main():
 
     model.eval()
     prompts = [
+        "Schreib mir eine",
+        "Ich möchte",
+        "Kannst du mir",
         "Es war einmal",
         "Im Wurmloch",
         "Die Rakete",

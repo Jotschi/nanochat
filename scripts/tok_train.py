@@ -8,7 +8,7 @@ import argparse
 import torch
 from nanochat.tokenizer import RustBPETokenizer
 from nanochat.common import get_base_dir
-from nanochat.kleiner_astronaut_dataset import parquets_iter_batched
+from nanochat.kleiner_astronaut_dataset import jsonl_iter_batched
 
 # -----------------------------------------------------------------------------
 # Parse command line arguments
@@ -32,7 +32,7 @@ def text_iterator():
     3) Break when we've seen args.max_chars characters
     """
     nchars = 0
-    for batch in parquets_iter_batched(split="train"):
+    for batch in jsonl_iter_batched(split="train"):
         for doc in batch:
             doc_text = doc
             if len(doc_text) > args.doc_cap:

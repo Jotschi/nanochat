@@ -84,8 +84,8 @@ python -m scripts.tok_eval
 
 # Number of processes/GPUs to use
 NPROC_PER_NODE=1
-DEPTH=15
-BATCH_SIZE=8
+DEPTH=18
+BATCH_SIZE=4
 
 # pretrain the model
 torchrun --standalone --nproc_per_node=$NPROC_PER_NODE -m scripts.base_train -- --depth=$DEPTH  --device_batch_size=$BATCH_SIZE --run=$WANDB_RUN

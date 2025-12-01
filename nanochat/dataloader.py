@@ -3,7 +3,7 @@ from collections import deque
 import torch
 
 from nanochat.common import get_dist_info
-from nanochat.kleiner_astronaut_dataset import parquets_iter_batched
+from nanochat.kleiner_astronaut_dataset import jsonl_iter_batched
 from nanochat.tokenizer import get_tokenizer
 
 def tokenizing_distributed_data_loader(B, T, split, tokenizer_threads=4, tokenizer_batch_size=128, device="cuda"):
@@ -21,7 +21,7 @@ def tokenizing_distributed_data_loader(B, T, split, tokenizer_threads=4, tokeniz
     def document_batches():
         while True:
             # batch will iterate in group size of the parquet files, usually e.g. 1024 rows
-            for batch in parquets_iter_batched(split=split, start=ddp_rank, step=ddp_world_size):
+            for batch in jsonl_iter_batched(split=split, start=ddp_rank, step=ddp_world_size):
                 # for the tokenizer we might want to go in usually smaller batches, e.g. 128 rows
                 for i in range(0, len(batch), tokenizer_batch_size):
                     yield batch[i:i+tokenizer_batch_size]

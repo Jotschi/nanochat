@@ -38,14 +38,14 @@ step = None # step to load the model from (base model or midtrained model)
 dtype = "bfloat16"
 num_iterations = 100000 # explicit number of steps of the optimization (-1 = disable)
 max_seq_len = 1536
-device_batch_size = 8
+device_batch_size = 4
 unembedding_lr = 0.004
 embedding_lr = 0.2
 matrix_lr = 0.02
 init_lr_frac = 1.0 # initial learning rate is this fraction of the base learning rate
 weight_decay = 0.0
 eval_every = 150 # -1 = disable
-save_every = 100
+save_every = 300
 eval_tokens = 20*524288
 total_batch_size = 524288
 dry_run = 0 # dry_run=1 is for experiments: we will log to wandb but we won't write checkpoints or report
@@ -97,10 +97,10 @@ for opt in optimizers:
 
 # Midtraining data mixture and DataLoader
 base_dir = get_base_dir()
-nano_astronaut_conversations_train_filepath = os.path.join(base_dir, "kleiner_astronaut_conversations_v3_train.jsonl")
-nano_astronaut_conversations_val_filepath = os.path.join(base_dir, "kleiner_astronaut_conversations_v3_val.jsonl")
+nano_astronaut_conversations_train_filepath = os.path.join(base_dir, "kleiner_astronaut_conversations_v4_train.jsonl")
+nano_astronaut_conversations_val_filepath = os.path.join(base_dir, "kleiner_astronaut_conversations_v4_val.jsonl")
 train_dataset = TaskMixture([
-    CustomJSON(5000, filepath=nano_astronaut_conversations_train_filepath)
+    CustomJSON(1, filepath=nano_astronaut_conversations_train_filepath)
 ])
 val_dataset = TaskMixture([
     CustomJSON(1, filepath=nano_astronaut_conversations_val_filepath)

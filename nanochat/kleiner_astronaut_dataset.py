@@ -11,7 +11,7 @@ import os
 import argparse
 import time
 import requests
-import pyarrow.parquet as pq
+import json
 from multiprocessing import Pool
 
 from nanochat.common import get_base_dir
@@ -20,95 +20,55 @@ from nanochat.common import get_base_dir
 # The specifics of the current pretraining dataset
 
 # The URL on the internet where the data is hosted and downloaded from on demand
-BASE_URL = "https://huggingface.co/datasets/Jotschi/kleiner-astronaut/resolve/refs%2Fconvert%2Fparquet/default"
-index_to_filename = lambda index: f"{index:05d}.parquet" # format of the filenames
+index_to_filename = lambda index: f"{index:05d}.jsonl" # format of the filenames
 base_dir = get_base_dir()
-DATA_DIR = os.path.join(base_dir, "astronaut_data")
+DATA_DIR = os.path.join(base_dir, "astronaut_basedata")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # -----------------------------------------------------------------------------
 # These functions are useful utilities to other modules, can/should be imported
 
-def list_parquet_files(data_dir=None):
+def list_jsonl_files(split, data_dir=None):
     """ Looks into a data dir and returns full paths to all parquet files. """
     data_dir = DATA_DIR if data_dir is None else data_dir
     #print(data_dir)
-    parquet_files = sorted([
+    jsonl_files = sorted([
         f for f in os.listdir(data_dir)
-        if f.endswith('.parquet') and not f.endswith('.tmp')
+        if f.endswith('.jsonl') and split in f and not f.endswith('.tmp')
     ])
-    parquet_paths = [os.path.join(data_dir, f) for f in parquet_files]
-    return parquet_paths
+    jsonl_path = [os.path.join(data_dir, f) for f in jsonl_files]
+    return jsonl_path
 
-def parquets_iter_batched(split, start=0, step=1):
-    #print("Reading data ")
+def jsonl_iter_batched(split, start=0, step=1):
     if split == "val":
         split="test"
 
     assert split in ["train", "test"], "split must be 'train' or 'test'"
-    parquet_paths = list_parquet_files()
-    #print(parquet_paths)
-    parquet_paths = [f for f in parquet_paths if f"/{split}_" in f]
-    for filepath in parquet_paths:
-        #print(filepath)
-        pf = pq.ParquetFile(filepath)
-        for rg_idx in range(start, pf.num_row_groups, step):
-            rg = pf.read_row_group(rg_idx)
-            texts = rg.column('text').to_pylist()
-            yield texts
+    jsonl_path = list_jsonl_files(split)
 
+    for filepath in jsonl_path:
+        lines = []
+        
+        with open(filepath, 'r', encoding='utf-8') as f:
+            for i, line in enumerate(f):
+                if i < start:
+                    continue
+                if (i - start) % step != 0:
+                    continue
+
+                line = line.strip()
+                if not line:
+                    continue
+                entry = json.loads(line)
+                text = entry['request'] + " " + entry['story'] + " " + entry['question'] + " " + entry['answer']
+                lines.append(text)
+
+        if lines:
+            yield lines
 # -----------------------------------------------------------------------------
 def download_single_file(index):
-    """ Downloads a single file index, with some backoff """
-
-    # Construct the local filepath for this file and skip if it already exists
-    filename = index_to_filename(index)
-    filepath = os.path.join(DATA_DIR, filename)
-    if os.path.exists(filepath):
-        print(f"Skipping {filepath} (already exists)")
-        return True
-
-    # Construct the remote URL for this file
-    url = f"{BASE_URL}/{filename}"
-    print(f"Downloading {filename}...")
-
-    # Download with retries
-    max_attempts = 5
-    for attempt in range(1, max_attempts + 1):
-        try:
-            response = requests.get(url, stream=True, timeout=30)
-            response.raise_for_status()
-            # Write to temporary file first
-            temp_path = filepath + f".tmp"
-            with open(temp_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=1024 * 1024):  # 1MB chunks
-                    if chunk:
-                        f.write(chunk)
-            # Move temp file to final location
-            os.rename(temp_path, filepath)
-            print(f"Successfully downloaded {filename}")
-            return True
-
-        except (requests.RequestException, IOError) as e:
-            print(f"Attempt {attempt}/{max_attempts} failed for {filename}: {e}")
-            # Clean up any partial files
-            for path in [filepath + f".tmp", filepath]:
-                if os.path.exists(path):
-                    try:
-                        os.remove(path)
-                    except:
-                        pass
-            # Try a few times with exponential backoff: 2^attempt seconds
-            if attempt < max_attempts:
-                wait_time = 2 ** attempt
-                print(f"Waiting {wait_time} seconds before retry...")
-                time.sleep(wait_time)
-            else:
-                print(f"Failed to download {filename} after {max_attempts} attempts")
-                return False
-
-    return False
-
+    print("Noop")    
+    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download Kleiner Astronaut dataset")
@@ -116,11 +76,12 @@ if __name__ == "__main__":
     #parser.add_argument("-w", "--num-workers", type=int, default=4, help="Number of parallel download workers (default: 4)")
     #args = parser.parse_args()
 
-    print(f"Downloading...")
-    print(f"Target directory: {DATA_DIR}")
+    #print(f"Target directory: {DATA_DIR}")
     #print()
     #download_single_file
-    #print(list_parquet_files())
-    #for batch in parquets_iter_batched(split="train"):
+    #print(list_jsonl_files())
+    #for batch in jsonl_iter_batched(split="train"):
+    #    #print("BATCH")
     #    print(batch)
-    print(f"Done! Downloaded to {DATA_DIR}")
+    #    #print(next(batch))
+    #print(f"JSONL Dir {DATA_DIR}")

@@ -80,8 +80,8 @@ engine = Engine(model, tokenizer) # will be used for inline model evaluation onl
 
 # -----------------------------------------------------------------------------
 # Task data mixture we'll train on
-nano_astronaut_conversations_train_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_v2_train.jsonl")
-nano_astronaut_conversations_val_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_v2_val.jsonl")
+nano_astronaut_conversations_train_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_v4_train.jsonl")
+nano_astronaut_conversations_val_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_v4_val.jsonl")
 train_ds = TaskMixture([
     #ARC(subset="ARC-Easy", split="train"), # 2.3K rows
     #ARC(subset="ARC-Challenge", split="train"), # 1.1K rows
