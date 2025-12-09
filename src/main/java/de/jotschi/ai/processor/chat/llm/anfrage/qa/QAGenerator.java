@@ -46,7 +46,7 @@ public class QAGenerator extends AbstractGenerator {
 	public QuestionAnswerResult generateQA(String story) {
 
 		for (int i = 0; i < RETRY_MAX; i++) {
-			String randomFrageTyp = W_FRAGEN.get(rand.nextInt(W_FRAGEN.size()));
+			String randomFrageTyp = W_FRAGEN.get(RND.nextInt(W_FRAGEN.size()));
 			Prompt prompt = new PromptImpl(ANFRAGE_PROMPT_TEMPLATE);
 
 			if (story.length() > 1000) {

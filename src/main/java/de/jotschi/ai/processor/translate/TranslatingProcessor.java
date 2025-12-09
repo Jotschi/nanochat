@@ -29,7 +29,7 @@ public class TranslatingProcessor extends AbstractProcessor<ChatQADatasetEntry> 
 			}
 		}
 		String source = row.getVarCharObj("source");
-		return new ChatQADatasetEntry(row.getRowNumber(), "", source);
+		return new ChatQADatasetEntry("" + row.getRowNumber(), "", source);
 	}
 
 	@Override

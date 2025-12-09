@@ -1,12 +1,5 @@
-package de.jotschi.ai.processor.chat;
+package de.jotschi.ai.processor.jsonl;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.charset.Charset;
-
-import org.apache.commons.io.FileUtils;
-
-import de.jotschi.ai.processor.DatasetEntryHandler;
 import de.jotschi.ai.processor.chat.llm.anfrage.AnfrageGenerator;
 import de.jotschi.ai.processor.chat.llm.anfrage.AnfrageResult;
 import de.jotschi.ai.processor.chat.llm.anfrage.qa.QAGenerator;
@@ -16,35 +9,28 @@ import io.metaloom.ai.genai.llm.LargeLanguageModel;
 import io.metaloom.ai.genai.utils.TextUtils;
 import io.vertx.core.json.JsonObject;
 
-public class KleinerAstronautChatQAHandler implements DatasetEntryHandler<KleinerAstronautDatasetEntry> {
-
-	private final File outputFile;
+public class KleinerAstronautJsonlHandler {
 
 	private QAGenerator qaGenerator;
 
 	private AnfrageGenerator anfrageGenerator;
 
-	public KleinerAstronautChatQAHandler(File outputFile, LLMProvider ollama, LargeLanguageModel model) {
-		this.outputFile = outputFile;
-		this.anfrageGenerator = new AnfrageGenerator(ollama, model);
-		this.qaGenerator = new QAGenerator(ollama, model);
+	public KleinerAstronautJsonlHandler(LLMProvider llm, LargeLanguageModel model) {
+		this.anfrageGenerator = new AnfrageGenerator(llm, model);
+		this.qaGenerator = new QAGenerator(llm, model);
 	}
 
-	@Override
-	public void process(KleinerAstronautDatasetEntry entry) {
-		if (entry.id() <= 6870) {
-			return;
-		}
+	public JsonObject process(KleinerAstronautJsonlEntry entry) {
 		try {
-			String text = entry.text();
+			String text = entry.getText();
 
 			if (TextUtils.count('*', text) > 0) {
-				System.err.println("Skipping story " + entry.id() + " - malformed content '*'");
-				return;
+				System.err.println("Skipping story " + entry.hash() + " - malformed content '*'");
+				return null;
 			}
 
-			String word1 = entry.word1();
-			String word2 = entry.word2();
+			String word1 = entry.getWord();
+			String word2 = entry.getSpaceWord();
 
 			// Poor mans declension handling
 			String word1Needle = word1.toLowerCase();
@@ -58,39 +44,38 @@ public class KleinerAstronautChatQAHandler implements DatasetEntryHandler<Kleine
 
 			if (!hasWord1 || !hasWord2) {
 				System.err.println(
-						"Skipping story " + entry.id() + " - lacking words: " + word1Needle + " / " + word2Needle);
-				return;
+						"Skipping story " + entry.hash() + " - lacking words: " + word1Needle + " / " + word2Needle);
+				return null;
 			}
 
 			AnfrageResult result = anfrageGenerator.generateTriggerQuestion(text, word1, word2);
 			QuestionAnswerResult qa = qaGenerator.generateQA(text);
 			if (qa != null) {
 				JsonObject jsonOut = new JsonObject();
-				jsonOut.put("id", entry.id());
+				jsonOut.put("hash", entry.hash());
 				jsonOut.put("request", result.anfrage());
 				jsonOut.put("request_word_1", result.word1());
 				jsonOut.put("request_word_2", result.word2());
 				jsonOut.put("story", text);
-				jsonOut.put("story_adj_1", entry.adj1());
-				jsonOut.put("story_adj_2", entry.adj2());
-				jsonOut.put("story_topic", entry.topic());
-				jsonOut.put("story_verb", entry.verb());
+				jsonOut.put("story_adj_1", entry.getAdjective1());
+				jsonOut.put("story_adj_2", entry.getAdjective2());
+				jsonOut.put("story_topic", entry.getTopic());
+				jsonOut.put("story_verb", entry.getVerb());
 				jsonOut.put("story_word_1", word1);
 				jsonOut.put("story_word_2", word2);
+				jsonOut.put("story_target_len", entry.getLen());
+				jsonOut.put("story_names", entry.getNames());
+				jsonOut.put("story_start", entry.getStart());
 				jsonOut.put("question", qa.question());
 				jsonOut.put("question_typ", qa.typ());
 				jsonOut.put("answer", qa.answer());
 				jsonOut.put("answer_word", qa.word());
-				try {
-					FileUtils.writeStringToFile(outputFile, jsonOut.encode() + "\n", Charset.defaultCharset(), true);
-				} catch (IOException e) {
-					System.err.println("Processing failed");
-					e.printStackTrace();
-				}
+				return jsonOut;
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+		return null;
 
 	}
 

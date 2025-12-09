@@ -9,7 +9,7 @@ public class AbstractGenerator {
 
 	protected static final int RETRY_MAX = 20;
 
-	protected static final Random rand = new Random();
+	protected static final Random RND = new Random();
 
 	protected LLMProvider llm;
 

@@ -6,10 +6,10 @@ public class ChatQADatasetEntry implements DatasetEntry {
 
 	private final String messages;
 	private final String source;
-	private final long id;
+	private final String hash;
 
-	public ChatQADatasetEntry(long id, String messages, String source) {
-		this.id = id;
+	public ChatQADatasetEntry(String hash, String messages, String source) {
+		this.hash = hash;
 		this.messages = messages;
 		this.source = source;
 	}
@@ -28,7 +28,7 @@ public class ChatQADatasetEntry implements DatasetEntry {
 	}
 
 	@Override
-	public long id() {
-		return id;
+	public String hash() {
+		return hash;
 	}
 }

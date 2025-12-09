@@ -1,8 +1,8 @@
-package de.jotschi.ai.processor.chat;
+package de.jotschi.ai.processor.parquet;
 
 import de.jotschi.ai.processor.DatasetEntry;
 
-public class KleinerAstronautDatasetEntry implements DatasetEntry {
+public class KleinerAstronautParquetEntry implements DatasetEntry {
 
 	private long id;
 	private String topic;
@@ -13,7 +13,7 @@ public class KleinerAstronautDatasetEntry implements DatasetEntry {
 	private String word2;
 	private String text;
 
-	public KleinerAstronautDatasetEntry(long id, String topic, String adj1, String adj2, String verb, String word1,
+	public KleinerAstronautParquetEntry(long id, String topic, String adj1, String adj2, String verb, String word1,
 			String word2, String text) {
 		this.id = id;
 		this.topic = topic;
@@ -26,8 +26,8 @@ public class KleinerAstronautDatasetEntry implements DatasetEntry {
 	}
 
 	@Override
-	public long id() {
-		return id;
+	public String hash() {
+		return null;
 	}
 
 	public String topic() {

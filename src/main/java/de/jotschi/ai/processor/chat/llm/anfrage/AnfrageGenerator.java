@@ -23,7 +23,7 @@ public class AnfrageGenerator extends AbstractGenerator {
 
 	// Du möchtest eine kurze Kindergeschichte hören.
 
-	final String GENERATE_ANFRAGE_PROMPT_TEMPLATE = """
+	public static final String GENERATE_ANFRAGE_PROMPT_TEMPLATE = """
 			Du bist ein 8-jähriges Kind.
 
 			Schreibe eine einzige Anfrage, die zu der zu folgenden Text passt.
@@ -59,7 +59,7 @@ public class AnfrageGenerator extends AbstractGenerator {
 
 	public AnfrageResult generateTriggerQuestion(String story, String word1, String word2) {
 		for (int i = 0; i < RETRY_MAX; i++) {
-			String randomAnfang = ANFRAGE_LIST.get(rand.nextInt(ANFRAGE_LIST.size()));
+			String randomAnfang = ANFRAGE_LIST.get(RND.nextInt(ANFRAGE_LIST.size()));
 
 			Prompt prompt = new PromptImpl(GENERATE_ANFRAGE_PROMPT_TEMPLATE);
 			story = TextUtils.softClamp(story, STORY_MAX_LEN, '?', '.', '!', '\n');
@@ -69,7 +69,7 @@ public class AnfrageGenerator extends AbstractGenerator {
 			prompt.set("anfang", randomAnfang);
 
 			LLMContext ctx = LLMContext.ctx(prompt, model);
-			ctx.setTemperature(0.25);
+			ctx.setTemperature(1);
 			try {
 				String anfrage = llm.generate(ctx);
 

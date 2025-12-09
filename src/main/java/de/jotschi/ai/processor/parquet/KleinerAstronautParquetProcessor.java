@@ -1,4 +1,4 @@
-package de.jotschi.ai.processor.chat;
+package de.jotschi.ai.processor.parquet;
 
 import java.io.File;
 import java.util.List;
@@ -7,11 +7,11 @@ import org.apache.arrow.vector.table.Row;
 
 import de.jotschi.ai.processor.AbstractProcessor;
 
-public class KleinerAstronautChatProcessor extends AbstractProcessor<KleinerAstronautDatasetEntry> {
+public class KleinerAstronautParquetProcessor extends AbstractProcessor<KleinerAstronautParquetEntry> {
 
-	private KleinerAstronautChatQAHandler handler;
+	private KleinerAstronautParquetHandler handler;
 
-	public KleinerAstronautChatProcessor(KleinerAstronautChatQAHandler handler) {
+	public KleinerAstronautParquetProcessor(KleinerAstronautParquetHandler handler) {
 		this.handler = handler;
 	}
 
@@ -26,7 +26,7 @@ public class KleinerAstronautChatProcessor extends AbstractProcessor<KleinerAstr
 	}
 
 	@Override
-	protected KleinerAstronautDatasetEntry toDatasetEntry(long id, Row row) {
+	protected KleinerAstronautParquetEntry toDatasetEntry(long id, Row row) {
 		String topic = row.getVarCharObj("topic");
 		String adj1 = row.getVarCharObj("adjective_1");
 		String adj2 = row.getVarCharObj("adjective_2");
@@ -35,6 +35,6 @@ public class KleinerAstronautChatProcessor extends AbstractProcessor<KleinerAstr
 		String word2 = row.getVarCharObj("word_2");
 		String text = row.getVarCharObj("text");
 
-		return new KleinerAstronautDatasetEntry(id, topic, adj1, adj2, verb, word1, word2, text);
+		return new KleinerAstronautParquetEntry(id, topic, adj1, adj2, verb, word1, word2, text);
 	}
 }

@@ -14,7 +14,7 @@ public enum Models implements LargeLanguageModel {
 	OLLAMA_MAGISTRAL_24B("magistral:24b", LLMProviderType.OLLAMA),
 
 	OLLAMA_MISTRAL_SMALL_32_24B_Q8("mistral-small3.2:24b-instruct-2506-q8_0", LLMProviderType.OLLAMA),
-	
+
 	OLLAMA_PHI3_MINI("phi3:mini", LLMProviderType.OLLAMA);
 
 	private String id;
@@ -33,11 +33,11 @@ public enum Models implements LargeLanguageModel {
 
 	@Override
 	public String url() {
-		return "http://localhost:11434";
+		return System.getProperty("ollama.host");
 	}
 
 	@Override
-	public int contextWindow() {
+	public long contextWindow() {
 		return 4096;
 	}
 
