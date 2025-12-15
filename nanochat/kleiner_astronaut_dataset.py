@@ -60,7 +60,8 @@ def jsonl_iter_batched(split, start=0, step=1):
                 if not line:
                     continue
                 entry = json.loads(line)
-                text = entry['request'] + " " + entry['story'] + " " + entry['question'] + " " + entry['answer']
+                text = entry['request'] + " " + entry['story']
+                #+ " " + entry['question'] + " " + entry['answer']
                 lines.append(text)
 
         if lines:

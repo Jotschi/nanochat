@@ -34,7 +34,7 @@ from tasks.spellingbee import SimpleSpelling, SpellingBee
 # SFT Hyperparameters
 run = "dummy" # wandb run name default ("dummy" is special - we won't log to wandb)
 # input model options
-source = "mid" # base|mid , which checkpoint to load the model from (base model or midtrained model)
+source = "sft" # base|mid , which checkpoint to load the model from (base model or midtrained model)
 model_tag = None # model tag to load the model from (base model or midtrained model)
 step = None # step to load the model from (base model or midtrained model)
 # compute/precision
@@ -42,7 +42,7 @@ device_type = "" # cuda|cpu|mps (empty => autodetect)
 dtype = "bfloat16"
 device_batch_size = 4 # max to avoid OOM
 # optimization
-num_epochs = 1
+num_epochs = 10
 num_iterations = -1 # override number of iterations (-1 = disable, use num_epochs to derive it)
 target_examples_per_step = 32
 unembedding_lr = 0.004
@@ -51,9 +51,10 @@ matrix_lr = 0.02
 weight_decay = 0.0
 init_lr_frac = 0.02
 # evaluation and logging there of
-eval_every = 100
-eval_steps = 100
-eval_metrics_every = 200
+eval_every = 200
+eval_steps = 200
+save_every= 600
+eval_metrics_every = 400
 eval_metrics_max_problems = 1024
 # now allow CLI to override the settings via the configurator lol
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
@@ -80,8 +81,8 @@ engine = Engine(model, tokenizer) # will be used for inline model evaluation onl
 
 # -----------------------------------------------------------------------------
 # Task data mixture we'll train on
-nano_astronaut_conversations_train_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_v4_train.jsonl")
-nano_astronaut_conversations_val_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_v4_val.jsonl")
+nano_astronaut_conversations_train_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_train.jsonl")
+nano_astronaut_conversations_val_filepath = os.path.join(get_base_dir(), "kleiner_astronaut_conversations_val.jsonl")
 train_ds = TaskMixture([
     #ARC(subset="ARC-Easy", split="train"), # 2.3K rows
     #ARC(subset="ARC-Challenge", split="train"), # 1.1K rows
@@ -208,6 +209,29 @@ for step in range(num_iterations):
             **metrics,
         })
         model.train()
+
+
+    if master_process and (step > 0 and step % save_every == 0):
+        base_dir = get_base_dir()
+        depth = model.config.n_layer
+        model_tag = f"d{depth}" # base the model tag on the depth of the base model
+        checkpoint_dir = os.path.join(base_dir, "chatsft_checkpoints", model_tag)
+        model_config_kwargs = model.config.__dict__ # slightly naughty, abusing the simplicity of GPTConfig, TODO nicer
+        save_checkpoint(
+            checkpoint_dir,
+            step,
+            model.state_dict(),
+            None, # note: we don't bother to save the optimizer state
+            {
+                "step": step,
+                "val_loss": val_loss,
+                **metrics,
+                "model_config": model_config_kwargs,
+            }
+        )
+        print(f"✅ Saved model checkpoint to {checkpoint_dir}")
+
+
 
     if last_step:
         break

@@ -97,8 +97,8 @@ for opt in optimizers:
 
 # Midtraining data mixture and DataLoader
 base_dir = get_base_dir()
-nano_astronaut_conversations_train_filepath = os.path.join(base_dir, "kleiner_astronaut_conversations_v4_train.jsonl")
-nano_astronaut_conversations_val_filepath = os.path.join(base_dir, "kleiner_astronaut_conversations_v4_val.jsonl")
+nano_astronaut_conversations_train_filepath = os.path.join(base_dir, "kleiner_astronaut_conversations_train.jsonl")
+nano_astronaut_conversations_val_filepath = os.path.join(base_dir, "kleiner_astronaut_conversations_val.jsonl")
 train_dataset = TaskMixture([
     CustomJSON(1, filepath=nano_astronaut_conversations_train_filepath)
 ])
@@ -137,8 +137,8 @@ def mid_data_generator(split):
             cursor += ddp_world_size
             if cursor >= dataset_size:
                 cursor -= dataset_size # wrap around for another epoch
-                if split == "train":
-                    last_step = True # toggle last_step to True, which will terminate the training loop
+                #if split == "train":
+                    #last_step = True # toggle last_step to True, which will terminate the training loop
         # Stopping condition to respect num_iterations, if given
         it += 1
         if num_iterations > 0 and it >= num_iterations:
