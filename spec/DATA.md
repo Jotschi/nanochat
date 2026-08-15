@@ -80,6 +80,19 @@ the raw `text`, not the v6 `story`.**
 reward keys: the German nouns/names the generated text must contain. Vert.x `JsonObject` preserves
 insertion order, so key order is always `role, content, rl_key1, rl_key2`.
 
+Rendered token lengths (vocab 8192), measured over the 24,407 training conversations:
+
+| | count | mean | p50 | p99 | max |
+| --- | --- | --- | --- | --- | --- |
+| 4-turn | 13,564 | 272 | 253 | 585 | 975 |
+| 2-turn | 10,843 | 96 | 94 | 143 | 313 |
+
+`Tokenizer.render_conversation` hard-truncates at `max_tokens=2048`, which would silently drop the
+answer turn. **Nothing comes close** — 0 conversations hit the limit. Recheck this if the story
+clamp in `KleinerAstronautJsonlHandler` (`STORY_MAX_LEN = 300`) is ever raised.
+
+That works out to ~4.7M tokens per SFT epoch.
+
 ## Regenerating
 
 ```bash
