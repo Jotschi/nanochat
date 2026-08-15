@@ -11,6 +11,7 @@ import io.metaloom.ai.genai.llm.LLMProvider;
 import io.metaloom.ai.genai.llm.LargeLanguageModel;
 import io.metaloom.ai.genai.llm.prompt.Prompt;
 import io.metaloom.ai.genai.llm.prompt.impl.PromptImpl;
+import io.metaloom.ai.genai.utils.TextUtils;
 import io.metaloom.utils.hash.HashUtils;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -57,7 +58,7 @@ public class StoryGenerator extends AbstractGenerator {
 			try {
 				String story = llm.generate(ctx);
 				// Quality Gate
-				if (passQualityGate(story, seed.len())) {
+				if (passQualityGate(story, seed)) {
 					System.out.println("OK [len: " + story.length() + "] - " + seed.len());
 					JsonObject json = new JsonObject();
 					json.put("hash", HashUtils.computeMD5(story).toString());
@@ -104,7 +105,7 @@ public class StoryGenerator extends AbstractGenerator {
 
 	}
 
-	private boolean passQualityGate(String story, int len) {
+	private boolean passQualityGate(String story, StorySeed seed) {
 		if (story == null || story.isEmpty()) {
 			System.err.println("Retry - quality gate failed (null)");
 			return false;
@@ -113,6 +114,19 @@ public class StoryGenerator extends AbstractGenerator {
 //			System.err.println("Retry - quality gate failed (len) - " + len);
 //			return false;
 //		}
+		if (TextUtils.isEnglish(story)) {
+			return false;
+		}
+		if (!TextUtils.isAscii(story)) {
+			return false;
+		}
+		if (!TextUtils.hasWord(story, seed.word())) {
+			return false;
+		}
+		if (!TextUtils.hasWord(story, seed.spaceWord())) {
+			return false;
+		}
+
 		story = story.toLowerCase();
 		Set<String> flags = Set.of("generated", "_helper", "minäkello", "Gesamtlänge:", "Hinweis:", "Inspiration:",
 				"Handlung:", "quadratic", "mtl:", "_text", "shift_", "admin", "mtkxqh", "(Ende", "written", "_max_",

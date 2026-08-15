@@ -3,6 +3,7 @@ package de.jotschi.ai.processor.parquet;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.List;
 
 import org.apache.commons.io.FileUtils;
 
@@ -62,7 +63,7 @@ public class KleinerAstronautParquetHandler implements DatasetEntryHandler<Klein
 				return;
 			}
 
-			AnfrageResult result = anfrageGenerator.generateTriggerQuestion(text, word1, word2);
+			AnfrageResult result = anfrageGenerator.generateTriggerQuestion(text, List.of(word1, word2));
 			QuestionAnswerResult qa = qaGenerator.generateQA(text);
 			if (qa != null) {
 				JsonObject jsonOut = new JsonObject();

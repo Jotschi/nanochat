@@ -7,7 +7,7 @@ import io.metaloom.ai.genai.llm.LargeLanguageModel;
 
 public class AbstractGenerator {
 
-	protected static final int RETRY_MAX = 20;
+	protected static final int RETRY_MAX = 30;
 
 	protected static final Random RND = new Random();
 

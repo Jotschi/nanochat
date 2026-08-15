@@ -8,6 +8,7 @@ public class KleinerAstronautJsonlEntry implements DatasetEntry {
 
 	private String hash;
 	private String text;
+	private String story;
 	private String verb;
 	private String word;
 	private String topic;
@@ -32,6 +33,14 @@ public class KleinerAstronautJsonlEntry implements DatasetEntry {
 
 	public void setHash(String hash) {
 		this.hash = hash;
+	}
+
+	public String getStory() {
+		return story;
+	}
+
+	public void setStory(String story) {
+		this.story = story;
 	}
 
 	public String getText() {

@@ -1,0 +1,14 @@
+# Copy to settings.properties and adjust. settings.properties is gitignored.
+
+# OpenAI-compatible LLM endpoint, e.g. vLLM or llama.cpp with --api-server.
+# Only stages 1 and 2 (story / request / QA generation) need this.
+# Stage 3 (Dataset2Chat, SplitDataset) runs entirely offline.
+cluster.url=http://localhost:8000/v1
+
+# Model id as advertised by that endpoint, and its context window in tokens.
+llm.model=mistralai/Mistral-Small-24B-Instruct-2501
+llm.context.window=128000
+
+# Where the nanochat artifacts live. Must match NANOCHAT_BASE_DIR used by the
+# Python side. Stage 3 writes the conversation and base-data jsonl in here.
+nanochat.cache.dir=/path/to/nanochat-cache

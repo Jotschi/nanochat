@@ -2,5 +2,15 @@
 target
 .project
 .settings
-/config
-/dataset
+
+# Local settings hold an internal endpoint and machine-specific paths.
+# Only the placeholder example is tracked.
+/config/*
+!/config/settings.properties.example
+
+# Bulk corpora (~180 MB of stories, plus ~926 MB of SmolTalk parquet).
+# Only the SmolTalk download script is tracked.
+/dataset/*
+!/dataset/smoltalk/
+/dataset/smoltalk/*
+!/dataset/smoltalk/download-smol-smoltalk-parquet.sh

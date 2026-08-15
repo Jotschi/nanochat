@@ -39,7 +39,7 @@ public class StoryGeneratorTest extends AbstractGeneratorTest {
 		ThreadPoolExecutor exec = createExecutor(24);
 
 		AtomicLong total = new AtomicLong();
-		File destFile = new File("dataset", "stories2.jsonl");
+		File destFile = new File("dataset", "stories.jsonl");
 		for (int i = 0; i < 24; i++) {
 			exec.execute(() -> {
 				while (true) {

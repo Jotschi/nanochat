@@ -1,5 +1,6 @@
 package de.jotschi.ai.processor.chat.llm.anfrage;
 
+import java.util.Collections;
 import java.util.List;
 
 import de.jotschi.ai.processor.chat.llm.AbstractGenerator;
@@ -9,13 +10,10 @@ import io.metaloom.ai.genai.llm.LargeLanguageModel;
 import io.metaloom.ai.genai.llm.prompt.Prompt;
 import io.metaloom.ai.genai.llm.prompt.impl.PromptImpl;
 import io.metaloom.ai.genai.utils.TextUtils;
-import io.vertx.core.json.JsonObject;
 
 public class AnfrageGenerator extends AbstractGenerator {
 
 	private static final int ANFRAGE_OUTPUT_MAX_LEN = 150;
-
-	private static final int STORY_MAX_LEN = 150;
 
 	private static final List<String> ANFRAGE_LIST = List.of("Schreibe mir", "Erfinde eine", "Schreib eine",
 			"Schreib mir", "Schreib ein", "Erzähle mir", "Kannst du mir", "Bitte erzähle mir", "Eine Geschichte",
@@ -57,12 +55,28 @@ public class AnfrageGenerator extends AbstractGenerator {
 		super(llm, model);
 	}
 
-	public AnfrageResult generateTriggerQuestion(String story, String word1, String word2) {
+	public AnfrageResult generateTriggerQuestion(String story, List<String> words) {
+		String word1 = pickRandomAndRemove(words);
+		String word2 = pickRandomAndRemove(words);
+
+		// Pick another word if it is not in the story
+		if (!hasWord(story, word1) && !words.isEmpty()) {
+			word1 = pickRandomAndRemove(words);
+		}
+
+		// Pick another word if it is not in the story
+		if (!hasWord(story, word2) && !words.isEmpty()) {
+			word2 = pickRandomAndRemove(words);
+		}
+
+		if (!hasWord(story, word1) || !hasWord(story, word2)) {
+			return null;
+		}
+
 		for (int i = 0; i < RETRY_MAX; i++) {
 			String randomAnfang = ANFRAGE_LIST.get(RND.nextInt(ANFRAGE_LIST.size()));
 
 			Prompt prompt = new PromptImpl(GENERATE_ANFRAGE_PROMPT_TEMPLATE);
-			story = TextUtils.softClamp(story, STORY_MAX_LEN, '?', '.', '!', '\n');
 			prompt.set("text", TextUtils.quote(story));
 			prompt.set("word1", word1);
 			prompt.set("word2", word2);
@@ -76,6 +90,14 @@ public class AnfrageGenerator extends AbstractGenerator {
 				// Retry on invalid JSON
 				if (anfrage == null || anfrage.isEmpty() || anfrage.contains("..")) {
 					System.err.println("Retry.. " + i + " Text invalid/incomplete: " + anfrage);
+					continue;
+				}
+				if (TextUtils.isEnglish(anfrage)) {
+					System.err.println("Retry.. " + i + " Text is english: " + anfrage);
+					continue;
+				}
+				if (!TextUtils.isAscii(anfrage)) {
+					System.err.println("Retry.. " + i + " Text is non ascii: " + anfrage);
 					continue;
 				}
 
@@ -93,16 +115,13 @@ public class AnfrageGenerator extends AbstractGenerator {
 				}
 
 				// Poor mans declension handling
-				String word1Needle = word1.toLowerCase();
-				word1Needle = word1Needle.substring(0, word1Needle.length() - 2);
-				String word2Needle = word1.toLowerCase();
-				word2Needle = word2Needle.substring(0, word2Needle.length() - 2);
+				if (!hasWord(anfrage, word1)) {
+					System.err.println("Retry.. " + i + " " + anfrage + " - lacking word: " + word1);
+					continue;
+				}
 
-				boolean hasWord1 = anfrage.toLowerCase().contains(word1Needle);
-				boolean hasWord2 = anfrage.toLowerCase().contains(word2Needle);
-
-				if (!hasWord1 || !hasWord2) {
-					System.err.println("Retry.. " + i + " " + anfrage + " - lacking word " + word1Needle + " / " + word2Needle);
+				if (!hasWord(anfrage, word2)) {
+					System.err.println("Retry.. " + i + " " + anfrage + " - lacking word: " + word2);
 					continue;
 				}
 
@@ -115,5 +134,20 @@ public class AnfrageGenerator extends AbstractGenerator {
 
 		}
 		return null;
+	}
+
+	private boolean hasWord(String text, String word) {
+		if (word == null || text == null) {
+			return false;
+		}
+		String needle = word.toLowerCase();
+		// Poormans declination handling
+		needle = needle.substring(0, needle.length() - 2);
+		return text.toLowerCase().contains(" " + needle);
+	}
+
+	private String pickRandomAndRemove(List<String> words) {
+		Collections.shuffle(words);
+		return words.removeFirst();
 	}
 }

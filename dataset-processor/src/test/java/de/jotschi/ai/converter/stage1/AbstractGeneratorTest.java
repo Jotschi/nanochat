@@ -5,8 +5,10 @@ import static org.junit.jupiter.api.Assertions.fail;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -20,6 +22,16 @@ import org.junit.jupiter.api.BeforeAll;
 import io.vertx.core.json.JsonObject;
 
 public abstract class AbstractGeneratorTest {
+
+	public static final FilenameFilter JSONL_FILENAME_FILTER = new FilenameFilter() {
+		public boolean accept(File dir, String name) {
+			return name.toLowerCase().endsWith(".jsonl");
+		}
+	};
+
+	protected List<JsonObject> readJsonlFile(File file) throws IOException {
+		return FileUtils.readLines(file, Charset.defaultCharset()).stream().map(line -> new JsonObject(line)).toList();
+	}
 
 	private static Properties settings;
 
@@ -51,15 +63,15 @@ public abstract class AbstractGeneratorTest {
 		}
 	}
 
-	protected String getClusterURL() {
+	protected static String getClusterURL() {
 		return settings.getProperty("cluster.url");
 	}
 
-	protected String getOllamaURL() {
+	protected static String getOllamaURL() {
 		return settings.getProperty("ollama.host");
 	}
 
-	protected String getNanoChatCacheDir() {
+	protected static String getNanoChatCacheDir() {
 		return settings.getProperty("nanochat.cache.dir");
 	}
 }

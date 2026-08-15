@@ -21,7 +21,7 @@ public class SplitDatasetTest extends AbstractGeneratorTest {
 		if (!dest.exists()) {
 			fail("Destination " + dest + " not found.");
 		}
-		File srcFile = new File("dataset", "kleiner_astronaut_qa_v5_combined.jsonl");
+		File srcFile = new File("dataset", "kleiner_astronaut_qa_v6.jsonl");
 		List<String> lines = FileUtils.readLines(srcFile, Charset.defaultCharset());
 		int total = lines.size();
 		int testSplit = (int) (0.05f * (float) total);
