@@ -66,7 +66,33 @@
 				<artifactId>maven-compiler-plugin</artifactId>
 				<version>${compiler-plugin.version}</version>
 				<configuration>
-					<release>24</release>
+					<!-- 21, not 24: the gpu-sandbox image ships Temurin 21 and 25. -->
+					<release>21</release>
+				</configuration>
+			</plugin>
+			<plugin>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>3.5.2</version>
+				<configuration>
+					<!--
+						Most classes under src/test are ETL jobs wearing @Test, not unit
+						tests: they need a live LLM endpoint and several loop forever.
+						Only the offline stage-3 converter tests run by default.
+						Run an ETL job explicitly, e.g.
+						  mvn test -Dtest=StoryGeneratorTest -DfailIfNoTests=false
+					-->
+					<excludes>
+						<exclude>**/StoryGeneratorTest.java</exclude>
+						<exclude>**/StoryProcessorTest.java</exclude>
+						<exclude>**/StoryBeginningListGeneratorTest.java</exclude>
+						<exclude>**/QuestionBeginningListGeneratorTest.java</exclude>
+						<exclude>**/AnfrageGeneratorTest.java</exclude>
+						<exclude>**/QAGeneratorTest.java</exclude>
+						<exclude>**/ParquetProcessorTest.java</exclude>
+						<exclude>**/JsonlHasherTest.java</exclude>
+						<exclude>**/TranslateProcessorTest.java</exclude>
+					</excludes>
+					<argLine>--add-opens=java.base/java.nio=ALL-UNNAMED</argLine>
 				</configuration>
 			</plugin>
 		</plugins>

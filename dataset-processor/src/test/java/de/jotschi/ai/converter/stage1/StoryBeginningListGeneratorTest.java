@@ -8,13 +8,11 @@ import java.util.Random;
 import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.Test;
 
-import de.jotschi.ai.processor.chat.llm.VLLMModel;
 import io.metaloom.ai.genai.llm.LLMContext;
 import io.metaloom.ai.genai.llm.LLMProvider;
 import io.metaloom.ai.genai.llm.LargeLanguageModel;
 import io.metaloom.ai.genai.llm.prompt.Prompt;
 import io.metaloom.ai.genai.llm.prompt.impl.PromptImpl;
-import io.metaloom.ai.genai.llm.vllm.VLLMLLMProvider;
 import io.metaloom.ai.genai.utils.TextUtils;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -37,17 +35,16 @@ public class StoryBeginningListGeneratorTest extends AbstractGeneratorTest {
 	public void testGenerateStoryBeginnings() throws IOException {
 
 		File destFile = new File("dataset", "beginnings.lst");
-		String url = getClusterURL();
-		LargeLanguageModel model = VLLMModel.mistral24bQ8(url);
-		LLMProvider vllm = new VLLMLLMProvider();
+		LargeLanguageModel llmModel = model();
+		LLMProvider provider = llm();
 		Prompt prompt = new PromptImpl(promptStr);
 
 		while (true) {
 			try {
-				LLMContext ctx = LLMContext.ctx(prompt, model);
+				LLMContext ctx = LLMContext.ctx(prompt, llmModel);
 				ctx.setTemperature(1);
 				ctx.setSeed(new Random().nextInt());
-				JsonObject json = vllm.generateJson(ctx);
+				JsonObject json = provider.generateJson(ctx);
 				JsonArray array = json.getJsonArray("anfänge");
 				System.out.println(array.encodePrettily());
 				for (int i = 0; i < array.size(); i++) {

@@ -1,13 +1,18 @@
 package de.jotschi.ai.processor.chat.llm;
 
-import io.metaloom.ai.genai.llm.LLMProviderType;
 import io.metaloom.ai.genai.llm.LargeLanguageModel;
 
+/**
+ * Model descriptor for an OpenAI-compatible endpoint - vLLM or llama.cpp in the
+ * background. Pair it with {@link io.metaloom.ai.genai.llm.openai.OpenAILLMProvider}.
+ */
 public class VLLMModel implements LargeLanguageModel {
 
-	private String id;
-	private String url;
-	private long ctxWindowSize;
+	public static final String MISTRAL_SMALL_24B = "mistralai/Mistral-Small-24B-Instruct-2501";
+
+	private final String id;
+	private final String url;
+	private final long ctxWindowSize;
 
 	public VLLMModel(String id, String url, long ctxWindowSize) {
 		this.id = id;
@@ -30,13 +35,13 @@ public class VLLMModel implements LargeLanguageModel {
 		return ctxWindowSize;
 	}
 
-	@Override
-	public LLMProviderType providerType() {
-		return LLMProviderType.VLLM;
+	public static VLLMModel mistral24bQ8(String url) {
+		return new VLLMModel(MISTRAL_SMALL_24B, url, 128_000);
 	}
 
-	public static VLLMModel mistral24bQ8(String url) {
-		return new VLLMModel("mistralai/Mistral-Small-24B-Instruct-2501", url, 128_000);
+	@Override
+	public String toString() {
+		return id + " @ " + url;
 	}
 
 }

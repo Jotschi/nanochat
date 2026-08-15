@@ -4,28 +4,27 @@ import java.io.File;
 
 import org.junit.jupiter.api.Test;
 
-import de.jotschi.ai.processor.chat.llm.Models;
-import de.jotschi.ai.processor.parquet.KleinerAstronautParquetProcessor;
+import de.jotschi.ai.converter.stage1.AbstractGeneratorTest;
 import de.jotschi.ai.processor.parquet.KleinerAstronautParquetHandler;
-import io.metaloom.ai.genai.llm.LLMProvider;
-import io.metaloom.ai.genai.llm.LargeLanguageModel;
-import io.metaloom.ai.genai.llm.ollama.OllamaLLMProvider;
+import de.jotschi.ai.processor.parquet.KleinerAstronautParquetProcessor;
 
 /**
- * Add --add-opens=java.base/java.nio=ALL-UNNAMED to run the tests.
+ * Legacy path: build the QA dataset straight from the HuggingFace
+ * {@code Jotschi/kleiner-astronaut} parquet export rather than from
+ * self-generated stories. Superseded by stage 1 + stage 2 and kept only for
+ * reference - {@code dataset/kleiner_astronaut/} is not part of this repo.
+ * <p>
+ * Add {@code --add-opens=java.base/java.nio=ALL-UNNAMED} to run it. Needs a live
+ * LLM endpoint, so it is excluded from the surefire run.
  */
-public class ParquetProcessorTest {
+public class ParquetProcessorTest extends AbstractGeneratorTest {
 
 	@Test
 	public void testQA() {
 		File datasetFolder = new File("dataset", "kleiner_astronaut");
-
-		LargeLanguageModel model = Models.OLLAMA_MISTRAL_SMALL_32_24B_Q8;
-		LLMProvider ollama = new OllamaLLMProvider();
 		File datasetOut = new File("dataset", "kleiner_astronaut_qa_v3.jsonl");
-		KleinerAstronautParquetHandler handler = new KleinerAstronautParquetHandler(datasetOut, ollama, model);
+		KleinerAstronautParquetHandler handler = new KleinerAstronautParquetHandler(datasetOut, llm(), model());
 		KleinerAstronautParquetProcessor c = new KleinerAstronautParquetProcessor(handler);
 		c.process(datasetFolder, "train");
-
 	}
 }

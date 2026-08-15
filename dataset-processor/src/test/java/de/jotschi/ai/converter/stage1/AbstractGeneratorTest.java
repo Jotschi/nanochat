@@ -19,6 +19,10 @@ import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.BeforeAll;
 
+import de.jotschi.ai.processor.chat.llm.VLLMModel;
+import io.metaloom.ai.genai.llm.LLMProvider;
+import io.metaloom.ai.genai.llm.LargeLanguageModel;
+import io.metaloom.ai.genai.llm.openai.OpenAILLMProvider;
 import io.vertx.core.json.JsonObject;
 
 public abstract class AbstractGeneratorTest {
@@ -67,11 +71,26 @@ public abstract class AbstractGeneratorTest {
 		return settings.getProperty("cluster.url");
 	}
 
-	protected static String getOllamaURL() {
-		return settings.getProperty("ollama.host");
-	}
-
 	protected static String getNanoChatCacheDir() {
 		return settings.getProperty("nanochat.cache.dir");
+	}
+
+	/**
+	 * The single LLM provider we use. The endpoint is OpenAI-compatible, so vLLM
+	 * or llama.cpp can sit behind it.
+	 */
+	protected static LLMProvider llm() {
+		return new OpenAILLMProvider();
+	}
+
+	/** Model descriptor built from {@code cluster.url} / {@code llm.model} / {@code llm.context.window}. */
+	protected static LargeLanguageModel model() {
+		String url = getClusterURL();
+		if (url == null || url.isBlank()) {
+			fail("No 'cluster.url' configured in config/settings.properties");
+		}
+		String id = settings.getProperty("llm.model", VLLMModel.MISTRAL_SMALL_24B);
+		long ctx = Long.parseLong(settings.getProperty("llm.context.window", "128000"));
+		return new VLLMModel(id, url, ctx);
 	}
 }

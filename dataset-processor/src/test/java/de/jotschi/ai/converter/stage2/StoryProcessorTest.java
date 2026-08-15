@@ -17,13 +17,13 @@ import org.junit.jupiter.api.Test;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import de.jotschi.ai.converter.stage1.AbstractGeneratorTest;
-import de.jotschi.ai.processor.chat.llm.VLLMModel;
 import de.jotschi.ai.processor.jsonl.KleinerAstronautJsonlHandler;
-import io.metaloom.ai.genai.llm.LLMProvider;
-import io.metaloom.ai.genai.llm.LargeLanguageModel;
-import io.metaloom.ai.genai.llm.vllm.VLLMLLMProvider;
 import io.vertx.core.json.JsonObject;
 
+/**
+ * Stage 2: turn raw stories into request/story (+ optional question/answer)
+ * records. ETL job - needs a live LLM endpoint, excluded from surefire.
+ */
 public class StoryProcessorTest extends AbstractGeneratorTest {
 
 	private static final AtomicLong FAILURES = new AtomicLong();
@@ -33,10 +33,7 @@ public class StoryProcessorTest extends AbstractGeneratorTest {
 
 	@Test
 	public void testProcess() throws IOException, InterruptedException {
-		LLMProvider llm = new VLLMLLMProvider();
-		String url = getClusterURL();
-		LargeLanguageModel model = VLLMModel.mistral24bQ8(url);
-		KleinerAstronautJsonlHandler handler = new KleinerAstronautJsonlHandler(llm, model);
+		KleinerAstronautJsonlHandler handler = new KleinerAstronautJsonlHandler(llm(), model());
 		ThreadPoolExecutor exec = createExecutor(10);
 		Set<String> hashes = loadHashes(outputFile);
 		File storiesFolder = new File("dataset", "stories");
