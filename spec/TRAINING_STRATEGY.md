@@ -64,6 +64,25 @@ stay positive out to ~16. Raise `EPOCHS` while `val_bpb` still falls, stop when 
 Single **RTX 4090** (24 GB, SM 89). The RTX 3060 (12 GB, SM 86) is not worth pairing under DDP — it
 would halve throughput and cap the device batch size.
 
+**The 4090 is shared with the LLM server.** Stages 1 and 2 of the data pipeline need llama.cpp or
+vLLM, and a 24B model in that container occupies ~20 GB, leaving nothing for training — a training
+run started underneath it dies with `torch.OutOfMemoryError` a few hundred MiB short. `nvidia-smi`
+will name the holder:
+
+```bash
+nvidia-smi --query-compute-apps=pid,used_memory --format=csv
+docker ps --format '{{.Names}} {{.Image}}'
+```
+
+Options when they collide, in order of preference:
+1. Run the two phases at different times — generation is a one-off, training is not.
+2. Put the short stages (SFT, evals) on the 3060: `CUDA_VISIBLE_DEVICES=1` plus a smaller
+   `DEVICE_BATCH_SIZE` (4 fits comfortably; pretraining at 16 peaks at 13.0 GiB and will not fit).
+3. Pin the LLM server to the 3060 instead and keep the 4090 for training, if the model is small
+   enough to fit in 12 GB.
+
+`runs/sandbox.sh` honours `CUDA_VISIBLE_DEVICES` from the environment and only defaults it to 0.
+
 - `CUDA_VISIBLE_DEVICES=0 torchrun --standalone --nproc_per_node=1`
 - `--window-pattern L` — Flash Attention 3 is Hopper-only, so attention falls back to SDPA, and
   `nanochat/flash_attention.py` warns loudly for any non-`L` pattern on the fallback path.

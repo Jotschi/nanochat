@@ -140,10 +140,30 @@ fi
 # SFT: teach the chat special tokens and the request -> story -> question -> answer shape
 if has_stage sft; then
     echo "=== Stage: sft ==="
+    # checkpoint_manager.find_last_step picks the HIGHEST step number, not the
+    # best model. Shortening the horizon leaves a higher-numbered checkpoint from
+    # an earlier, worse run that then wins silently -- SFT would warm-start from
+    # the overfit model. Pin the step, and report which one is being used.
+    BASE_STEP=${BASE_STEP:-$NUM_ITERATIONS}
+    if [ -n "${BASE_STEP:-}" ]; then
+        META="$NANOCHAT_BASE_DIR/base_checkpoints/d$DEPTH/meta_$(printf '%06d' "$BASE_STEP").json"
+        if [ ! -f "$META" ]; then
+            echo "No base checkpoint at step $BASE_STEP ($META)." >&2
+            echo "Available:" >&2
+            ls "$NANOCHAT_BASE_DIR/base_checkpoints/d$DEPTH"/meta_*.json 2>/dev/null >&2 || true
+            exit 1
+        fi
+        echo "Base checkpoint: step $BASE_STEP, val_bpb $($PY -c "import json;print(json.load(open('$META'))['val_bpb'])")"
+        STEP_ARG=(--model-step="$BASE_STEP")
+    else
+        STEP_ARG=()
+    fi
+
     $TORCHRUN -m scripts.chat_sft -- \
         --kleiner-astronaut \
         --kleiner-astronaut-epochs="$SFT_EPOCHS" \
         --device-batch-size="$DEVICE_BATCH_SIZE" \
+        "${STEP_ARG[@]}" \
         --run="$WANDB_RUN"
 fi
 

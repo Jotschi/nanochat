@@ -159,6 +159,64 @@ d12 base model used downstream is the 600-step, fully-annealed one.
 every intermediate evaluation. Long runs write to
 `$NANOCHAT_BASE_DIR/logs/` instead.
 
+## 2d. SFT and the first end-to-end model
+
+d12, 74 steps (2 epochs over 24,407 conversations), on the 3060 at
+`DEVICE_BATCH_SIZE=4` because the 4090 was hosting llama.cpp. 10.5 minutes.
+
+**The December failure mode does not reproduce.** Step-0 validation bpb is
+**1.3428** against the base model's **1.3300** — essentially continuous. Compare
+the old run, where step 1 was 13.07, *above* uniform-random for the vocabulary.
+Training loss rises from 2.03 to a peak of 3.54 around step 21 as the model meets
+the chat special tokens for the first time, then recovers to 2.46 as warmdown
+proceeds. `lrm` reaches 0.00.
+
+**SFT overfits at 2 epochs.** Validation bpb went 1.2678 → 1.3664. One epoch is
+the obvious next thing to try.
+
+### First numbers on the actual goal
+
+`scripts/chat_astronaut_eval -i sft --max-problems 120`:
+
+| metric | result |
+| --- | --- |
+| Keyword adherence (story contains both requested words) | 32/97 = **32.99%** |
+| Question answering (answer contains `answer_word`) | 47/120 = **39.17%** |
+
+Keyword adherence is the weaker of the two, which is consistent with the training
+data: only 58.1% of story turns carry both reward keys (§2), so the two-keyword
+signal is diluted.
+
+### Qualitative check
+
+```
+USER  : Schreib ein Abenteuer von Mira in das Raumschiff nur mit Aris
+ASSIST: In einem riesigen Raumschiff namens "Sternenblitz" lebt der kleine
+        Astronaut Mira. Eines Tages entdeckt er auf einem fernen Planeten ein
+        seltsames, blinkendes Licht, das wie ein großer Diamant aussieht. ...
+USER  : Wer fliegt mit dem Raumschiff?     ASSIST: Mira fliegt mit dem Raumschiff.
+USER  : Wo spielt die Geschichte?          ASSIST: In der fernen Galaxie.
+USER  : Was hat Mira entdeckt?             ASSIST: Mira hat einen großen Diamanten entdeckt.
+```
+
+The last answer is grounded reading comprehension — the story described the light
+as looking like "ein großer Diamant" and the model retrieved it. Note the story
+also drops "Aris", which is what the 33% keyword score measures.
+
+Stories end abruptly and sometimes degenerate ("Es kommen direkt aus dem Licht,
+das aus dem Licht kommt"). That traces to the training data: v6 stories are
+`softClamp`ed to 300 characters, so the model never saw many long, well-resolved
+endings.
+
+### Open question
+
+Each SFT evaluation prints **two** `Validation bpb` lines with different values
+(1.3428 and 1.2678 at step 0; 1.4303 and 1.3664 at step 74). There is exactly one
+`print0` site, one `if` guard, and one process, and `last_step` is correctly
+guarded by `split == "train"` so the val loader is not ending training early.
+Unexplained. It does not change the conclusion — both series rise by ~0.09 — but
+it is worth understanding before trusting the absolute numbers.
+
 ## 3. Environment findings
 
 - **Upstream deleted the mid-training stage.** No `scripts/mid_train.py`, no `tasks/customjson.py`,

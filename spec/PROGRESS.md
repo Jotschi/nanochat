@@ -51,10 +51,11 @@
 - [x] Parquet round-trip: 133,204 rows / 128,303,041 chars; last shard is the held-out split
 - [x] Tokenizer: **4.58 chars/token** at vocab 8192, beating GPT-2 (2.67) and GPT-4 (3.48)
 - [x] Smoke run `--depth=4 --num-iterations=20`: loop works, German text already emerging
-- [ ] Full base run (d12, 4 epochs, 855 iterations); `val_bpb` monotone, `lrm` reaches ~0
-- [ ] SFT run; step-0 loss sane, train/val move together
-- [ ] `chat_astronaut_eval` baseline numbers
-- [ ] `chat_cli` end-to-end: story request, then a follow-up question
+- [x] Full base run — d12, **600 iterations**, `lrm` reaches 0.00, final val bpb **1.3300**
+- [x] Horizon located: val bpb bottoms at ~500-550 steps (see FINDINGS §2c)
+- [x] SFT run — 74 steps, `lrm` reaches 0.00, step-0 val bpb **1.3428** vs base 1.3300 (no blow-up)
+- [x] `chat_astronaut_eval` baseline — story keywords **32.99%**, question answering **39.17%**
+- [x] End-to-end: writes a German story on request, then answers questions about it correctly
 - [x] Upstream tests still pass — 58 passed
 
       bash runs/sandbox.sh bash -c 'uv run --group dev python -m pytest tests/ -m "not slow" -q'
@@ -73,6 +74,23 @@
 | Conversations | 25,709 (14,289 four-turn, 11,420 two-turn) |
 | Held out | 6,644 stories / 1,302 conversations (~5%) |
 | Story turns keeping both reward keys | 58.1% |
+
+## Next steps, in order of expected value
+
+1. **SFT for 1 epoch instead of 2.** Val bpb rose 1.2678 → 1.3664 over two epochs.
+   `SFT_EPOCHS=1`.
+2. **Raise `STORY_MAX_LEN`.** v6 stories are clamped to 300 characters in
+   `KleinerAstronautJsonlHandler`, so the model never learns to finish a story —
+   generations trail off or repeat. The raw corpus averages 963 characters.
+   Regenerating stage 2 with a larger clamp needs the LLM endpoint.
+3. **Regenerate QA coverage over the full corpus.** Only 14,289 of 133,204 stories
+   have a question/answer pair; the rest can only teach request → story. This is
+   the single biggest lever on the 39% QA number, and needs the LLM endpoint.
+4. **Improve reward-key quality.** 42% of story turns lack a verifiable second
+   keyword, which caps keyword adherence. Fixing `word2Needle` (done) helps future
+   generations; existing rows keep the gap.
+5. **RL on the keyword reward** (`scripts/chat_rl.py` with `KleinerAstronaut`),
+   once SFT is settled.
 
 ## Open questions
 
