@@ -78,6 +78,22 @@ memorization.
 | stage 1/2 | All RNG unseeded, temperature 1.0, 24/10 virtual threads appending concurrently → non-reproducible; executors `awaitTermination`-ed but never `shutdown()` |
 | `AbstractGeneratorTest` | `getOllamaURL()` read key `ollama.host` while the config defined `ollama.url` → always null (moot now, Ollama removed) |
 
+### Measured impact of the `word2Needle` bug
+
+The rebuilt converter only attaches a reward key when the keyword can actually be
+found in the text it describes. Over all 25,709 conversations:
+
+| Story-turn reward keys retained | Conversations | Share |
+| --- | --- | --- |
+| both `rl_key1` and `rl_key2` | 14,947 | 58.1% |
+| one of the two | 8,143 | 31.7% |
+| neither | 2,619 | 10.2% |
+
+So **~42% of story turns carried at least one keyword that does not occur in the
+reference story**. Under the old code those keys were shipped anyway, giving the
+RL stage targets it could not satisfy. The answer-turn key survives in 14,289 of
+14,289 cases (100%) — `QAGenerator`'s quality gate did verify that one.
+
 ## 3. Environment findings
 
 - **Upstream deleted the mid-training stage.** No `scripts/mid_train.py`, no `tasks/customjson.py`,

@@ -95,6 +95,17 @@
 					<argLine>--add-opens=java.base/java.nio=ALL-UNNAMED</argLine>
 				</configuration>
 			</plugin>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<version>3.5.0</version>
+				<configuration>
+					<!-- The stage-3 converters run offline, e.g.
+					     mvn -q compile exec:java \
+					       -Dexec.mainClass=de.jotschi.ai.converter.stage3.Dataset2Chat -->
+					<classpathScope>compile</classpathScope>
+				</configuration>
+			</plugin>
 		</plugins>
 	</build>
 </project>

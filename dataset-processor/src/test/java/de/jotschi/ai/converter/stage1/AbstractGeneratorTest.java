@@ -1,15 +1,11 @@
 package de.jotschi.ai.converter.stage1;
 
-import static org.junit.jupiter.api.Assertions.fail;
-
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FilenameFilter;
 import java.io.IOException;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.List;
-import java.util.Properties;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
@@ -17,14 +13,18 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.io.FileUtils;
-import org.junit.jupiter.api.BeforeAll;
 
+import de.jotschi.ai.Settings;
 import de.jotschi.ai.processor.chat.llm.VLLMModel;
 import io.metaloom.ai.genai.llm.LLMProvider;
 import io.metaloom.ai.genai.llm.LargeLanguageModel;
 import io.metaloom.ai.genai.llm.openai.OpenAILLMProvider;
 import io.vertx.core.json.JsonObject;
 
+/**
+ * Shared plumbing for the stage 1 and 2 ETL jobs. These are not unit tests -
+ * they need a live LLM endpoint and are excluded from the surefire run.
+ */
 public abstract class AbstractGeneratorTest {
 
 	public static final FilenameFilter JSONL_FILENAME_FILTER = new FilenameFilter() {
@@ -34,33 +34,23 @@ public abstract class AbstractGeneratorTest {
 	};
 
 	protected List<JsonObject> readJsonlFile(File file) throws IOException {
-		return FileUtils.readLines(file, Charset.defaultCharset()).stream().map(line -> new JsonObject(line)).toList();
-	}
-
-	private static Properties settings;
-
-	@BeforeAll
-	public static void loadSettings() throws FileNotFoundException, IOException {
-		settings = new Properties();
-		File settingsFile = new File("config", "settings.properties");
-		if (!settingsFile.exists()) {
-			fail("Settings file " + settingsFile + " not found.");
-		}
-		settings.load(new FileInputStream(settingsFile));
+		return Files.readAllLines(file.toPath(), StandardCharsets.UTF_8).stream()
+				.map(String::strip)
+				.filter(line -> !line.isEmpty())
+				.map(JsonObject::new)
+				.toList();
 	}
 
 	protected ThreadPoolExecutor createExecutor(int poolSize) {
-		BlockingQueue<Runnable> WORK_QUEUE = new LinkedBlockingQueue<Runnable>(256);
+		BlockingQueue<Runnable> workQueue = new LinkedBlockingQueue<Runnable>(256);
 		ThreadFactory factory = Thread.ofVirtual().factory();
-		ThreadPoolExecutor exec = new ThreadPoolExecutor(poolSize, poolSize, 0L, TimeUnit.MILLISECONDS, WORK_QUEUE,
-				factory, new ThreadPoolExecutor.CallerRunsPolicy());
-		return exec;
+		return new ThreadPoolExecutor(poolSize, poolSize, 0L, TimeUnit.MILLISECONDS, workQueue, factory,
+				new ThreadPoolExecutor.CallerRunsPolicy());
 	}
 
 	protected static synchronized void writeLocking(JsonObject json, File outputFile) {
 		try {
-
-			FileUtils.writeStringToFile(outputFile, json.encode() + "\n", Charset.defaultCharset(), true);
+			FileUtils.writeStringToFile(outputFile, json.encode() + "\n", StandardCharsets.UTF_8, true);
 		} catch (IOException e) {
 			System.err.println("Processing failed");
 			e.printStackTrace();
@@ -68,11 +58,11 @@ public abstract class AbstractGeneratorTest {
 	}
 
 	protected static String getClusterURL() {
-		return settings.getProperty("cluster.url");
+		return Settings.clusterUrl();
 	}
 
 	protected static String getNanoChatCacheDir() {
-		return settings.getProperty("nanochat.cache.dir");
+		return Settings.nanochatCacheDir().getAbsolutePath();
 	}
 
 	/**
@@ -83,14 +73,8 @@ public abstract class AbstractGeneratorTest {
 		return new OpenAILLMProvider();
 	}
 
-	/** Model descriptor built from {@code cluster.url} / {@code llm.model} / {@code llm.context.window}. */
+	/** Model descriptor from {@code cluster.url} / {@code llm.model} / {@code llm.context.window}. */
 	protected static LargeLanguageModel model() {
-		String url = getClusterURL();
-		if (url == null || url.isBlank()) {
-			fail("No 'cluster.url' configured in config/settings.properties");
-		}
-		String id = settings.getProperty("llm.model", VLLMModel.MISTRAL_SMALL_24B);
-		long ctx = Long.parseLong(settings.getProperty("llm.context.window", "128000"));
-		return new VLLMModel(id, url, ctx);
+		return new VLLMModel(Settings.llmModel(), Settings.clusterUrl(), Settings.llmContextWindow());
 	}
 }

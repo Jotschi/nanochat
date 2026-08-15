@@ -1,139 +1,135 @@
 package de.jotschi.ai.converter.stage3;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Collections;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
-import org.apache.commons.io.FileUtils;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
-import de.jotschi.ai.converter.stage1.AbstractGeneratorTest;
-import io.metaloom.ai.genai.utils.TextUtils;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 
-public class Dataset2ChatTest extends AbstractGeneratorTest {
+/**
+ * Offline tests for the chat converter. No LLM, no fixtures outside the repo.
+ */
+public class Dataset2ChatTest {
 
+	private static final String STORY = "Mira flog mit dem Raumschiff zum Mond. Aris winkte ihr zu.";
 
-	public static long SKIPPED_STORIES = 0;
-	public static long TRIMMED_STORIES = 0;
-	public static long TOTAL = 0;
-	
-	private static File INPUT_DATASET;
-	private static File NANOCHAT_DIR;
-	private static File OUTPUT_TRAIN;
-	private static File OUTPUT_VAL;
-
-	@BeforeAll
-	public static void setupFolders() {
-		INPUT_DATASET = new File("dataset", "kleiner_astronaut_qa_v6.jsonl");
-//	public static final File OUTPUT_TRAIN = new File("dataset", "kleiner_astronaut_conversations_v3_train.jsonl");
-//	public static final File OUTPUT_VAL = new File("dataset", "kleiner_astronaut_conversations_v3_val.jsonl");
-		
-		NANOCHAT_DIR = new File(getNanoChatCacheDir());
-		
-		OUTPUT_TRAIN = new File(NANOCHAT_DIR, "kleiner_astronaut_conversations_train.jsonl");
-		OUTPUT_VAL = new File(NANOCHAT_DIR, "kleiner_astronaut_conversations_val.jsonl");
-		
-	}
-	
 	@Test
-	public void testConvert() throws IOException {
-		if (OUTPUT_TRAIN.exists()) {
-			OUTPUT_TRAIN.delete();
-		}
+	public void testFourTurnWhenQuestionAndAnswerArePresent() {
+		JsonObject record = new JsonObject()
+				.put("hash", "75baf618ff5de97b9e057ad60e6a2690")
+				.put("request", "Schreib ein Abenteuer von Mira mit Aris")
+				.put("request_word_1", "Mira")
+				.put("request_word_2", "Aris")
+				.put("story", STORY)
+				.put("question", "Wer winkte Mira zu?")
+				.put("answer", "Aris winkte ihr zu.")
+				.put("answer_word", "Aris");
 
-		if (OUTPUT_VAL.exists()) {
-			OUTPUT_VAL.delete();
-		}
+		JsonArray chat = new Dataset2Chat(Split.DEFAULT_VAL_FRACTION).toChat(record);
 
-		List<String> lines = FileUtils.readLines(INPUT_DATASET, Charset.defaultCharset());
-		int total = lines.size();
-		int val_size = (int) (total * 0.05f);
+		assertThat(chat).hasSize(4);
+		assertThat(chat.getJsonObject(0).getString("role")).isEqualTo("user");
+		assertThat(chat.getJsonObject(1).getString("role")).isEqualTo("assistant");
+		assertThat(chat.getJsonObject(2).getString("role")).isEqualTo("user");
+		assertThat(chat.getJsonObject(3).getString("role")).isEqualTo("assistant");
 
-		for (String line : lines) {
-			File destFile = OUTPUT_TRAIN;
-			if (val_size >= 0) {
-				destFile = OUTPUT_VAL;
-				val_size--;
-			}
-			line = line.trim();
-			line = TextUtils.trimNonAsciiFromEnd(line);
-			if (line.isEmpty()) {
-				continue;
-			}
-			try {
-				JsonObject json = new JsonObject(line);
-				List<JsonArray> list = toChat(json);
-				if (!list.isEmpty()) {
-					for (JsonArray conv : list) {
-						FileUtils.writeStringToFile(destFile, conv.encode() + "\n", Charset.defaultCharset(), true);
-						TOTAL++;
-					}
-				}
-			} catch (Exception e) {
-				System.out.println(line);
-				e.printStackTrace();
-			}
-		}
-		System.out.println("Total skipped: " + SKIPPED_STORIES);
-		System.out.println("Total trimmed: " + TRIMMED_STORIES);
-		System.out.println("Total written: " + TOTAL);
+		assertThat(chat.getJsonObject(1).getString("content")).isEqualTo(STORY);
+		assertThat(chat.getJsonObject(1).getString("rl_key1")).isEqualTo("Mira");
+		assertThat(chat.getJsonObject(1).getString("rl_key2")).isEqualTo("Aris");
+		assertThat(chat.getJsonObject(3).getString("rl_key1")).isEqualTo("Aris");
 	}
 
-	private List<JsonArray> toChat(JsonObject json) {
-		String request = json.getString("request");
-		if (request == null) {
-			return Collections.emptyList();
-		}
-		String request_word_1 = json.getString("request_word_1");
-		String request_word_2 = json.getString("request_word_2");
+	@Test
+	public void testTwoTurnWhenQuestionAndAnswerAreMissing() {
+		JsonObject record = new JsonObject()
+				.put("hash", "75baf618ff5de97b9e057ad60e6a2690")
+				.put("request", "Schreib ein Abenteuer von Mira mit Aris")
+				.put("request_word_1", "Mira")
+				.put("request_word_2", "Aris")
+				.put("story", STORY);
 
-		String story = json.getString("story");
-//		if (TextUtils.count('*', story) > 0) {
-//			return Collections.emptyList();
-//		}
-//		if (story.length() > 17000) {
-//			String trimmedStory = TextUtils.softClamp(story, 1700, '.', '!', '?', '\n');
-//			if (hasWord(trimmedStory, request_word_1) && hasWord(trimmedStory, request_word_2)
-//					&& hasWord(trimmedStory, answer_word)) {
-//				story = trimmedStory;
-//				TRIMMED_STORIES++;
-//			} else {
-//				SKIPPED_STORIES++;
-//				return Collections.emptyList();
-//			}
-//		}
-//		if (story.contains("\":")) {
-//			return Collections.emptyList();
-//		}
+		JsonArray chat = new Dataset2Chat(Split.DEFAULT_VAL_FRACTION).toChat(record);
 
-		List<JsonArray> chats = new ArrayList<>();
-		JsonArray chat = new JsonArray();
-		chat.add(message("user", request));
-		chat.add(message("assistant", story).put("rl_key1", request_word_1).put("rl_key2", request_word_2));
-		
-		// QA
-//		String answer = json.getString("answer");
-//		String question = json.getString("question");
-//		chat.add(message("user", question));
-//		String answer_word = json.getString("answer_word");
-//		chat.add(message("assistant", answer).put("rl_key1", answer_word));
-		chats.add(chat);
-
-//		JsonArray chat2 = new JsonArray();
-//		chat2.add(message("user", request));
-//		chat2.add(message("assistant", story).put("rl_key1", request_word_1).put("rl_key2", request_word_2));
-//		chats.add(chat2);
-
-		return chats;
+		assertThat(chat).hasSize(2);
+		assertThat(chat.getJsonObject(1).getString("rl_key1")).isEqualTo("Mira");
 	}
 
-	private JsonObject message(String role, String msg) {
-		return new JsonObject().put("role", role).put("content", msg);
+	@Test
+	public void testRewardKeyIsDroppedWhenItIsNotInTheStory() {
+		// The generator was supposed to guarantee both keywords occur, but its
+		// word2 check actually re-tested word1. Keys that cannot be satisfied
+		// must not reach the RL stage.
+		JsonObject record = new JsonObject()
+				.put("hash", "75baf618ff5de97b9e057ad60e6a2690")
+				.put("request", "Schreib ein Abenteuer von Mira mit einer Hexe")
+				.put("request_word_1", "Mira")
+				.put("request_word_2", "Hexe")
+				.put("story", STORY);
+
+		JsonArray chat = new Dataset2Chat(Split.DEFAULT_VAL_FRACTION).toChat(record);
+
+		assertThat(chat.getJsonObject(1).getString("rl_key1")).isEqualTo("Mira");
+		assertThat(chat.getJsonObject(1).containsKey("rl_key2")).as("'Hexe' is not in the story").isFalse();
+	}
+
+	@Test
+	public void testRecordWithoutRequestOrStoryIsRejected() {
+		Dataset2Chat converter = new Dataset2Chat(Split.DEFAULT_VAL_FRACTION);
+		assertThat(converter.toChat(new JsonObject().put("story", STORY))).isNull();
+		assertThat(converter.toChat(new JsonObject().put("request", "Schreib"))).isNull();
+	}
+
+	@Test
+	public void testRunSplitsByStoryHashAndWritesUtf8(@TempDir Path tmp) throws IOException {
+		Path input = tmp.resolve("in.jsonl");
+		// Two hashes chosen so one lands in each split at 50%.
+		List<String> lines = List.of(
+				record("00000000000000000000000000000000", "Mira").encode(),
+				record("ffffffff000000000000000000000000", "Mira").encode());
+		Files.write(input, lines, StandardCharsets.UTF_8);
+
+		File outDir = tmp.resolve("out").toFile();
+		Dataset2Chat converter = new Dataset2Chat(0.5);
+		converter.run(List.of(input.toFile()), outDir);
+
+		assertThat(converter.written()).isEqualTo(2);
+		assertThat(converter.skipped()).isZero();
+
+		List<String> train = Files.readAllLines(outDir.toPath().resolve(Dataset2Chat.TRAIN_NAME), StandardCharsets.UTF_8);
+		List<String> val = Files.readAllLines(outDir.toPath().resolve(Dataset2Chat.VAL_NAME), StandardCharsets.UTF_8);
+		assertThat(train).hasSize(1);
+		assertThat(val).hasSize(1);
+
+		// Umlauts must survive the round trip regardless of the platform charset.
+		assertThat(new JsonArray(train.get(0)).getJsonObject(1).getString("content")).contains("Raumschiff größer");
+	}
+
+	@Test
+	public void testMissingInputsAreSkippedNotFatal(@TempDir Path tmp) throws IOException {
+		Path input = tmp.resolve("in.jsonl");
+		Files.write(input, List.of(record("75baf618ff5de97b9e057ad60e6a2690", "Mira").encode()),
+				StandardCharsets.UTF_8);
+
+		Dataset2Chat converter = new Dataset2Chat(Split.DEFAULT_VAL_FRACTION);
+		converter.run(List.of(tmp.resolve("nope.jsonl").toFile(), input.toFile()), tmp.resolve("out").toFile());
+
+		assertThat(converter.written()).isEqualTo(1);
+	}
+
+	private static JsonObject record(String hash, String word) {
+		return new JsonObject()
+				.put("hash", hash)
+				.put("request", "Schreib ein Abenteuer von " + word)
+				.put("request_word_1", word)
+				.put("story", word + " flog, und das Raumschiff größer als der Mond wartete schon.");
 	}
 }

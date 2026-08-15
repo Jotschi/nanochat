@@ -1,5 +1,6 @@
 package de.jotschi.ai.processor.parquet;
 
+import de.jotschi.ai.converter.stage3.Words;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
@@ -47,19 +48,16 @@ public class KleinerAstronautParquetHandler implements DatasetEntryHandler<Klein
 			String word1 = entry.word1();
 			String word2 = entry.word2();
 
-			// Poor mans declension handling
-			String word1Needle = word1.toLowerCase();
-			word1Needle = word1Needle.substring(0, word1Needle.length() - 2);
-			String word2Needle = word1.toLowerCase();
-			word2Needle = word2Needle.substring(0, word2Needle.length() - 2);
-
-			// Only accept stories that are consistent with the words
-			boolean hasWord1 = text.toLowerCase().contains(word1Needle);
-			boolean hasWord2 = text.toLowerCase().contains(word2Needle);
+			// Only accept stories that are consistent with the words.
+			// Words.contains does the declension stemming with the length/number
+			// guards. The previous version derived the second needle from word1,
+			// so word2 was never actually checked against the story.
+			boolean hasWord1 = Words.contains(text, word1);
+			boolean hasWord2 = Words.contains(text, word2);
 
 			if (!hasWord1 || !hasWord2) {
 				System.err.println(
-						"Skipping story " + entry.hash() + " - lacking words: " + word1Needle + " / " + word2Needle);
+						"Skipping story " + entry.hash() + " - lacking words: " + word1 + " / " + word2);
 				return;
 			}
 
