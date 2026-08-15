@@ -217,6 +217,56 @@ guarded by `split == "train"` so the val loader is not ending training early.
 Unexplained. It does not change the conclusion — both series rise by ~0.09 — but
 it is worth understanding before trusting the absolute numbers.
 
+## 2e. vLLM serving: the architecture has moved ahead of transformers
+
+`vllm serve` runs nanochat models through transformers' `NanoChatForCausalLM`
+(vLLM has no native kernel; it uses `--model-impl transformers`). That
+implementation targets an **older nanochat architecture than this repo trains**.
+
+`python vllm/convert_to_hf.py --check` on the d12 SFT checkpoint:
+
+```
+Tensors    : 91
+Mapped     : 74
+Unsupported by transformers' NanoChat (17 tensors):
+  per-layer value embeddings added to V
+  gate blending the value embedding into V
+  token-smearing gate over the previous token / scale for the smear gate
+  backout of the first block's contribution
+  per-layer residual stream scaling / re-blending of the initial embedding
+```
+
+Those 17 tensors carry trained weights. Dropping them does not raise — the model
+loads and generates, just not the model that was trained — so the converter
+refuses unless given `--force`.
+
+One difference *is* benign: nanochat normalises with parameter-free
+`F.rms_norm` while transformers uses learnable RMSNorm. An all-ones weight makes
+them identical, and the converter synthesises those.
+
+Installed for reference: vLLM 0.27.1, transformers 5.15.0 (ships `models/nanochat`),
+torch 2.13.0+cu130, in `vllm/.venv` — deliberately separate from the training venv,
+which pins torch 2.9.1.
+
+The serving path itself is **verified** against `nanochat-students/nanochat-d20`
+on the 3060: server up, `vllm/test.sh` returning both completions. Three
+environment fixes were needed to get there, all now baked into the scripts:
+
+| symptom | cause | fix |
+| --- | --- | --- |
+| `Could not find nvcc and default cuda_home='/usr/local/cuda' doesn't exist` | flashinfer JIT-compiles kernels; the gpu-sandbox image is the *runtime* PyTorch base with no CUDA toolkit. Attention was fine (FLASH_ATTN) — only the sampler pulls flashinfer in | `VLLM_USE_FLASHINFER_SAMPLER=0` |
+| every chat request returns HTTP 400 `User messages must contain string content` | vLLM's OpenAI server rewrites content into a list of parts; nanochat's chat template indexes it as a string | `--chat-template-content-format string` |
+| server starts but is unreachable | container-local loopback bind, no published port | `runs/sandbox.sh` publishes 8000; `start-vllm.sh` binds `0.0.0.0` |
+
+The 400 initially looked like the model returning empty completions, because
+`curl -f` exits non-zero and prints nothing on an HTTP error. `vllm/test.sh`
+deliberately omits `-f` and surfaces the server's message.
+
+**Heterogeneous GPUs:** vLLM warns that with an RTX 4090 and an RTX 3060 in one
+box, the default device ordering is fastest-first, so `CUDA_VISIBLE_DEVICES=1`
+can select a different card than `nvidia-smi` shows. `vllm/start-vllm.sh` sets
+`CUDA_DEVICE_ORDER=PCI_BUS_ID`.
+
 ## 3. Environment findings
 
 - **Upstream deleted the mid-training stage.** No `scripts/mid_train.py`, no `tasks/customjson.py`,

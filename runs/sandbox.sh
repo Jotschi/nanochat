@@ -69,9 +69,18 @@ if [ -t 0 ] && [ -t 1 ]; then
     TTY_FLAGS=(-it)
 fi
 
+# Publish ports so a server started inside the container is reachable from the
+# host, e.g. `bash runs/sandbox.sh bash vllm/start-vllm.sh` then `bash vllm/test.sh`
+# from another shell. Space-separated "host:container" pairs.
+PUBLISH_FLAGS=()
+for mapping in ${SANDBOX_PUBLISH:-8000:8000}; do
+    PUBLISH_FLAGS+=(-p "$mapping")
+done
+
 exec docker run --rm "${TTY_FLAGS[@]}" \
     --gpus all \
     --shm-size 32g \
+    "${PUBLISH_FLAGS[@]}" \
     -e SANDBOX_USER=root \
     -e CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}" \
     -e OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}" \
