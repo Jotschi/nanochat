@@ -48,6 +48,10 @@ EVAL_EVERY=${EVAL_EVERY:-50}
 # times per evaluation: same number, 20x the compute, and at EVAL_EVERY=50 that
 # costs more than the training it is measuring.
 EVAL_TOKENS=${EVAL_TOKENS:-2097152}
+# The SFT val split is only ~325k tokens (1,302 conversations), and chat_sft
+# defaults --eval-tokens to 40*524288 = 21M, so it loops the same data ~64 times
+# per evaluation. One pass is enough.
+SFT_EVAL_TOKENS=${SFT_EVAL_TOKENS:-524288}
 # Anneal all the way to zero. Upstream leaves 5% of peak LR at the final step,
 # which is fine when data is plentiful but keeps nudging the model after it has
 # stopped improving here -- val bpb rose over the last ~100 steps of every run
@@ -162,6 +166,8 @@ if has_stage sft; then
     $TORCHRUN -m scripts.chat_sft -- \
         --kleiner-astronaut \
         --kleiner-astronaut-epochs="$SFT_EPOCHS" \
+        --eval-tokens="$SFT_EVAL_TOKENS" \
+        --final-lr-frac="$FINAL_LR_FRAC" \
         --device-batch-size="$DEVICE_BATCH_SIZE" \
         "${STEP_ARG[@]}" \
         --run="$WANDB_RUN"

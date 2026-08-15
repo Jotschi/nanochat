@@ -28,6 +28,11 @@ def _patch_missing_config_keys(model_config_kwargs):
 
 def _patch_missing_keys(model_data, model_config):
     """Add default values for new parameters that may be missing in old checkpoints."""
+    # An hf_compatible model never has these, by construction. Patching them in
+    # would make load_state_dict(strict=True) reject the checkpoint with
+    # "Unexpected key(s) in state_dict" - the absence is intended, not legacy.
+    if getattr(model_config, "hf_compatible", False):
+        return
     n_layer = model_config.n_layer
     # resid_lambdas defaults to 1.0 (identity scaling)
     if "resid_lambdas" not in model_data:

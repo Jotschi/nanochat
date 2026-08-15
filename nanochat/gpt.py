@@ -37,6 +37,12 @@ class GPTConfig:
     # Characters: L=long (full context), S=short (quarter context)
     # Examples: "L"=all full context, "SL"=alternating, "SSL"=two short then one long
     window_pattern: str = "SSSL"
+    # Restrict the architecture to what transformers' NanoChatForCausalLM models, so
+    # the checkpoint can be exported and served by vLLM. Drops the components this
+    # repo added after that port: value embeddings + their gates, the token-smear
+    # gate, the backout term, and the per-layer residual/x0 lambdas.
+    # Costs some quality; buys a servable model. See vllm/README.md.
+    hf_compatible: bool = False
 
 
 def norm(x):
@@ -79,7 +85,8 @@ class CausalSelfAttention(nn.Module):
         self.c_v = Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
         self.c_proj = Linear(self.n_embd, self.n_embd, bias=False)
         self.ve_gate_channels = 12
-        self.ve_gate = Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None
+        use_ve = has_ve(layer_idx, config.n_layer) and not config.hf_compatible
+        self.ve_gate = Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if use_ve else None
 
     def forward(self, x, ve, cos_sin, window_size, kv_cache):
         B, T, C = x.size()
@@ -179,17 +186,24 @@ class GPT(nn.Module):
         # resid_lambdas: scales the residual stream at each layer (init 1.0 = neutral)
         # x0_lambdas: blends initial embedding back in at each layer (init 0.0 = disabled)
         # Separate parameters so they can have different optimizer treatment
-        self.resid_lambdas = nn.Parameter(torch.ones(config.n_layer))   # fake init, real init in init_weights()
-        self.x0_lambdas = nn.Parameter(torch.zeros(config.n_layer))     # fake init, real init in init_weights()
-        # Smear: mix previous token's embedding into current token (cheap bigram-like info)
-        self.smear_gate = Linear(24, 1, bias=False)
-        self.smear_lambda = nn.Parameter(torch.zeros(1))
-        # Backout: subtract cached mid-layer residual before final norm to remove low-level features
-        self.backout_lambda = nn.Parameter(0.2 * torch.ones(1))
+        # Everything below is skipped under hf_compatible, so that the resulting
+        # state dict contains only tensors transformers' NanoChat knows about.
+        # These are nn.Parameter/nn.Module attributes, so they must not merely be
+        # unused - they must not exist, or they land in the checkpoint.
+        self.hf_compatible = config.hf_compatible
+        if not config.hf_compatible:
+            self.resid_lambdas = nn.Parameter(torch.ones(config.n_layer))   # fake init, real init in init_weights()
+            self.x0_lambdas = nn.Parameter(torch.zeros(config.n_layer))     # fake init, real init in init_weights()
+            # Smear: mix previous token's embedding into current token (cheap bigram-like info)
+            self.smear_gate = Linear(24, 1, bias=False)
+            self.smear_lambda = nn.Parameter(torch.zeros(1))
+            # Backout: subtract cached mid-layer residual before final norm to remove low-level features
+            self.backout_lambda = nn.Parameter(0.2 * torch.ones(1))
         # Value embeddings (ResFormer-style): alternating layers, last layer always included
         head_dim = config.n_embd // config.n_head
         kv_dim = config.n_kv_head * head_dim
-        self.value_embeds = nn.ModuleDict({str(i): nn.Embedding(padded_vocab_size, kv_dim) for i in range(config.n_layer) if has_ve(i, config.n_layer)})
+        ve_layers = [] if config.hf_compatible else [i for i in range(config.n_layer) if has_ve(i, config.n_layer)]
+        self.value_embeds = nn.ModuleDict({str(i): nn.Embedding(padded_vocab_size, kv_dim) for i in ve_layers})
         # To support meta device initialization, we init the rotary embeddings here, but it's just "fake" meta tensors only.
         # As for rotary_seq_len, these rotary embeddings are pretty small/cheap in memory,
         # so let's just over-compute them by 10X, but assert fail if we ever reach that amount.
@@ -232,18 +246,19 @@ class GPT(nn.Module):
             torch.nn.init.zeros_(block.mlp.c_proj.weight)
 
         # Per-layer scalars
-        # Per-layer resid init: stronger residual at early layers, weaker at deep layers
         n_layer = self.config.n_layer
-        for i in range(n_layer):
-            self.resid_lambdas.data[i] = 1.15 - (0.10 * i / max(n_layer - 1, 1))
-        # Decaying x0 init: earlier layers get more input embedding blending
-        for i in range(n_layer):
-            self.x0_lambdas.data[i] = 0.20 - (0.15 * i / max(n_layer - 1, 1))
+        if not self.hf_compatible:
+            # Per-layer resid init: stronger residual at early layers, weaker at deep layers
+            for i in range(n_layer):
+                self.resid_lambdas.data[i] = 1.15 - (0.10 * i / max(n_layer - 1, 1))
+            # Decaying x0 init: earlier layers get more input embedding blending
+            for i in range(n_layer):
+                self.x0_lambdas.data[i] = 0.20 - (0.15 * i / max(n_layer - 1, 1))
 
-        # Smear/backout scalars and smear gate must be explicitly initialized 
-        torch.nn.init.zeros_(self.smear_lambda)
-        torch.nn.init.constant_(self.backout_lambda, 0.2)
-        torch.nn.init.uniform_(self.smear_gate.weight, 0.0, 0.02)
+            # Smear/backout scalars and smear gate must be explicitly initialized
+            torch.nn.init.zeros_(self.smear_lambda)
+            torch.nn.init.constant_(self.backout_lambda, 0.2)
+            torch.nn.init.uniform_(self.smear_gate.weight, 0.0, 0.02)
 
         # Value embeddings (init like c_v: uniform with same std)
         for ve in self.value_embeds.values():
@@ -404,7 +419,10 @@ class GPT(nn.Module):
         value_embeds = sum(p.numel() for p in self.value_embeds.parameters())
         lm_head = sum(p.numel() for p in self.lm_head.parameters())
         transformer_matrices = sum(p.numel() for p in self.transformer.h.parameters())
-        scalars = self.resid_lambdas.numel() + self.x0_lambdas.numel() + self.smear_gate.weight.numel() + self.smear_lambda.numel() + self.backout_lambda.numel()
+        if self.hf_compatible:
+            scalars = 0
+        else:
+            scalars = self.resid_lambdas.numel() + self.x0_lambdas.numel() + self.smear_gate.weight.numel() + self.smear_lambda.numel() + self.backout_lambda.numel()
         total = wte + value_embeds + lm_head + transformer_matrices + scalars
         assert total == sum(p.numel() for p in self.parameters()), "Parameter count mismatch"
         return {
@@ -424,9 +442,9 @@ class GPT(nn.Module):
         value_embeds_params = list(self.value_embeds.parameters())
         embedding_params = list(self.transformer.wte.parameters())
         lm_head_params = list(self.lm_head.parameters())
-        resid_params = [self.resid_lambdas]
-        x0_params = [self.x0_lambdas]
-        smear_params = [self.smear_gate.weight, self.smear_lambda, self.backout_lambda]
+        resid_params = [] if self.hf_compatible else [self.resid_lambdas]
+        x0_params = [] if self.hf_compatible else [self.x0_lambdas]
+        smear_params = [] if self.hf_compatible else [self.smear_gate.weight, self.smear_lambda, self.backout_lambda]
         assert len(list(self.parameters())) == len(matrix_params) + len(embedding_params) + len(lm_head_params) + len(value_embeds_params) + len(resid_params) + len(x0_params) + len(smear_params)
 
         # Scale the LR for the AdamW parameters by ∝1/√dmodel (tuned for 768 dim model)
@@ -443,6 +461,9 @@ class GPT(nn.Module):
             dict(kind='adamw', params=x0_params, lr=scalar_lr, betas=(0.96, 0.95), eps=1e-10, weight_decay=0.0),  # higher beta1 for x0
             dict(kind='adamw', params=smear_params, lr=0.2, betas=(0.8, 0.95), eps=1e-10, weight_decay=0.0),
         ]
+        # Under hf_compatible several of these groups are empty; an optimizer group
+        # with no params is at best useless and at worst a crash.
+        param_groups = [g for g in param_groups if g['params']]
         # Muon groups (matrix params, grouped by shape for stacking)
         for shape in sorted({p.shape for p in matrix_params}):
             group_params = [p for p in matrix_params if p.shape == shape]
@@ -473,7 +494,9 @@ class GPT(nn.Module):
         x = norm(x)
 
         # Smear: mix previous token's embedding into current position (cheap bigram info)
-        if kv_cache is None:
+        if self.hf_compatible:
+            pass  # no smear gate in the transformers NanoChat architecture
+        elif kv_cache is None:
             # Training / naive generate: full sequence available, use fast slice
             assert T > 1, "Training forward pass should have T > 1"
             gate = self.smear_lambda.to(x.dtype) * torch.sigmoid(self.smear_gate(x[:, 1:, :24]))
@@ -497,13 +520,14 @@ class GPT(nn.Module):
         backout_layer = n_layer // 2  # cache at halfway point
         x_backout = None
         for i, block in enumerate(self.transformer.h):
-            x = self.resid_lambdas[i] * x + self.x0_lambdas[i] * x0
+            if not self.hf_compatible:
+                x = self.resid_lambdas[i] * x + self.x0_lambdas[i] * x0
             ve = self.value_embeds[str(i)](idx).to(x.dtype) if str(i) in self.value_embeds else None
             x = block(x, ve, cos_sin, self.window_sizes[i], kv_cache)
             if i == backout_layer:
                 x_backout = x
         # Subtract mid-layer residual to remove low-level features before logit projection
-        if x_backout is not None:
+        if x_backout is not None and not self.hf_compatible:
             x = x - self.backout_lambda.to(x.dtype) * x_backout
         x = norm(x)
 

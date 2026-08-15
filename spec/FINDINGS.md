@@ -249,23 +249,96 @@ torch 2.13.0+cu130, in `vllm/.venv` — deliberately separate from the training 
 which pins torch 2.9.1.
 
 The serving path itself is **verified** against `nanochat-students/nanochat-d20`
-on the 3060: server up, `vllm/test.sh` returning both completions. Three
-environment fixes were needed to get there, all now baked into the scripts:
+on the 3060: server up, `vllm/test.sh` returning both completions.
+
+`vllm/start-vllm.sh` runs the **official `vllm/vllm-openai` container** rather
+than pip-installing vLLM. The deciding reason is the CUDA toolkit: the
+gpu-sandbox image is a runtime-only PyTorch base, so a pip install of vLLM there
+dies at engine start with
+
+```
+RuntimeError: Could not find nvcc and default cuda_home='/usr/local/cuda' doesn't exist
+```
+
+because flashinfer JIT-compiles its kernels. (Attention was unaffected — vLLM
+picked FLASH_ATTN — only the sampler reaches for flashinfer, so
+`VLLM_USE_FLASHINFER_SAMPLER=0` also works as a pip-install workaround.) The
+official image carries the toolkit and needs no venv, which also keeps the
+training venv's pinned torch 2.9.1 untouched.
+
+Two more fixes, both baked into the script:
 
 | symptom | cause | fix |
 | --- | --- | --- |
-| `Could not find nvcc and default cuda_home='/usr/local/cuda' doesn't exist` | flashinfer JIT-compiles kernels; the gpu-sandbox image is the *runtime* PyTorch base with no CUDA toolkit. Attention was fine (FLASH_ATTN) — only the sampler pulls flashinfer in | `VLLM_USE_FLASHINFER_SAMPLER=0` |
-| every chat request returns HTTP 400 `User messages must contain string content` | vLLM's OpenAI server rewrites content into a list of parts; nanochat's chat template indexes it as a string | `--chat-template-content-format string` |
-| server starts but is unreachable | container-local loopback bind, no published port | `runs/sandbox.sh` publishes 8000; `start-vllm.sh` binds `0.0.0.0` |
+| every chat request returns HTTP 400 `User messages must contain string content` | vLLM's OpenAI server rewrites content into a list of parts; nanochat's chat template indexes it as a plain string | `--chat-template-content-format string` |
+| an index selects the wrong card | with a 4090 and a 3060 the default CUDA ordering is fastest-first, so `CUDA_VISIBLE_DEVICES=1` need not be the 3060 | select at the docker layer: `--gpus '"device=1"'` |
 
 The 400 initially looked like the model returning empty completions, because
 `curl -f` exits non-zero and prints nothing on an HTTP error. `vllm/test.sh`
 deliberately omits `-f` and surfaces the server's message.
 
-**Heterogeneous GPUs:** vLLM warns that with an RTX 4090 and an RTX 3060 in one
-box, the default device ordering is fastest-first, so `CUDA_VISIBLE_DEVICES=1`
-can select a different card than `nvidia-smi` shows. `vllm/start-vllm.sh` sets
-`CUDA_DEVICE_ORDER=PCI_BUS_ID`.
+Versions confirmed working: vLLM 0.27.1, transformers 5.15.0 (ships
+`models/nanochat`), torch 2.13.0+cu130.
+
+## 2f. The vLLM-compatible architecture is *better* on this corpus
+
+vLLM support for nanochat is real:
+[transformers#41634](https://github.com/huggingface/transformers/pull/41634) merged
+on 27 Nov 2025 with explicit vLLM work in its commits ("move attention into func
+and add kwarg to all signatures (for vllm)", "nanochat config is in all (fixes
+vllm)"). Verified here by serving `nanochat-d20` through
+`vllm/vllm-openai:latest` with `--model-impl transformers`.
+
+To close the architecture gap from our side, `GPTConfig.hf_compatible`
+(`base_train --hf-compatible`) drops the components added after that port: value
+embeddings and their gates, the token-smear gate, the backout term, and the
+per-layer residual/x0 lambdas. They are *not constructed* rather than merely
+unused — an `nn.Parameter` that exists lands in the checkpoint regardless. State
+dict goes from 91 tensors to exactly the **74** the converter maps.
+
+The expectation was that this would cost accuracy. It did the opposite:
+
+| d12, 600 steps, `--final-lr-frac 0` | min val bpb | final val bpb |
+| --- | --- | --- |
+| full architecture | 1.3231 @500 | 1.3300 (rose over the last 100 steps) |
+| `--hf-compatible` | **1.3209 @600** | **1.3209** |
+
+The simplified model is better *and* its curve is still falling at the horizon,
+so it satisfies G2 cleanly where the full architecture did not. The likely reason
+is capacity: value embeddings alone add `6 × vocab × kv_dim` parameters, and §2c
+already showed this 28M-token corpus saturating a d12. Those components are
+presumably worth their parameters at nanochat's intended data scale; at ours they
+are extra surface to overfit.
+
+SFT on top of it, **1 epoch** (2 overfit last time): val bpb 1.2426 → **1.2135**,
+last eval is the minimum. The end-to-end model now serves under vLLM:
+
+```
+USER  : Schreib ein Abenteuer von Mira in das Raumschiff nur mit Aris
+ASSIST: In einem weit entfernten Teil des Weltraums, wo die Sterne wie funkelnde
+        Diamanten leuchten, lebte ein kleiner Astronaut namens Mira. ... Es war
+        ein Quasar, ein riesiger, leuchtender Stern ...
+USER  : Was hat Mira entdeckt?
+ASSIST: Mira wollte herausfinden, was das für ein Quasar war.
+```
+
+Three traps on the way there, all now handled in `vllm/convert_to_hf.py`:
+
+1. **`checkpoint_manager._patch_missing_keys` fought the new flag.** It injects
+   `resid_lambdas`/`x0_lambdas` defaults for old checkpoints, then
+   `load_state_dict(strict=True)` rejects them as *unexpected* keys on an
+   hf_compatible model. It now skips patching when the config says so.
+2. **Norms are parameter-free in transformers' NanoChat too.** Synthesising
+   all-ones `input_layernorm`/`q_norm` weights — a reasonable guess, and what the
+   first version did — makes vLLM fail with "There is no module or parameter
+   named model.layers.0.input_layernorm.weight". The reference d20 has exactly
+   `20*6+2 = 122` tensors; ours has `12*6+2 = 74`, a 1:1 match with no synthesis.
+3. **The tokenizer needed rebuilding, and needed checking.** tiktoken stores only
+   token→rank, so merges are recovered by re-running BPE per token against
+   lower-rank merges. The converter round-trips samples through both tokenizers
+   and fails on any id mismatch — a silently wrong tokenizer presents as "the
+   model is just bad", and German umlauts are exactly where a lossy byte→str
+   conversion breaks.
 
 ## 3. Environment findings
 

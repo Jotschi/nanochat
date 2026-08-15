@@ -24,8 +24,13 @@ if ! curl -sf --max-time 5 "$BASE_URL/models" >/dev/null; then
 fi
 
 # Ask the server what it actually loaded, rather than assuming --served-model-name.
+# Written as an if, not an && chain: under `set -o errexit` a false chain standing
+# on its own line exits the script, so an unexpected /models response would kill
+# the test instead of falling back to the default name.
 SERVED=$(curl -sf "$BASE_URL/models" | jq -r '.data[0].id')
-[ -n "$SERVED" ] && [ "$SERVED" != "null" ] && MODEL="$SERVED"
+if [ -n "$SERVED" ] && [ "$SERVED" != "null" ]; then
+    MODEL="$SERVED"
+fi
 echo "Model: $MODEL"
 echo
 
