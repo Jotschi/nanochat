@@ -134,8 +134,26 @@ stopped at 700 once the trend was unambiguous.
 
 **A checkpoint from the middle of a long schedule is not the model you want** —
 at step 550 of 1,282 the LR is still mid-warmdown. The horizon has to be chosen
-so the schedule *ends* near the minimum, which is why the next run is a full
-600-iteration schedule rather than an early checkpoint of this one.
+so the schedule *ends* near the minimum.
+
+### Horizon runs
+
+| run | steps | `lrm` floor | min val bpb | final val bpb | gap |
+| --- | --- | --- | --- | --- | --- |
+| first | 855 | 0.05 | 1.3139 | 1.4006 | +6.6% |
+| sweep | 1,282 (stopped at 700) | 0.05 | 1.3296 @550 | — | rising |
+| horizon fix | 600 | 0.05 | 1.3227 @500 | 1.3330 | +0.8% |
+| + anneal to zero | 600 | 0.00 | 1.3231 @500 | 1.3300 | +0.5% |
+
+Shortening the horizon did nearly all the work, cutting the gap from 6.6% to
+0.8%. Annealing to zero (`--final-lr-frac 0`, against upstream's 0.05) took it to
+0.5% — worth keeping, but it confirms the 5% LR floor was a minor contributor
+rather than the cause. What remains is the model saturating the corpus: the last
+~15% of any schedule overfits slightly, whatever the LR does.
+
+**Stopping here.** 1.3227, 1.3231 and 1.3300 are all within 0.5% of each other,
+so the plateau is flat and further horizon tuning buys nothing measurable. The
+d12 base model used downstream is the 600-step, fully-annealed one.
 
 **Process note:** the first run was piped through `tail -60`, which discarded
 every intermediate evaluation. Long runs write to

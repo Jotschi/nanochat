@@ -48,6 +48,11 @@ EVAL_EVERY=${EVAL_EVERY:-50}
 # times per evaluation: same number, 20x the compute, and at EVAL_EVERY=50 that
 # costs more than the training it is measuring.
 EVAL_TOKENS=${EVAL_TOKENS:-2097152}
+# Anneal all the way to zero. Upstream leaves 5% of peak LR at the final step,
+# which is fine when data is plentiful but keeps nudging the model after it has
+# stopped improving here -- val bpb rose over the last ~100 steps of every run
+# that ended at lrm 0.05.
+FINAL_LR_FRAC=${FINAL_LR_FRAC:-0.0}
 # No --fp8: that needs Hopper, and this is an RTX 4090 (SM 89).
 # --window-pattern L: Flash Attention 3 is Hopper-only, so attention falls back
 # to SDPA, which warns loudly for any other pattern.
@@ -119,6 +124,7 @@ if has_stage base; then
         --core-metric-every=-1 \
         --eval-every="$EVAL_EVERY" \
         --eval-tokens="$EVAL_TOKENS" \
+        --final-lr-frac="$FINAL_LR_FRAC" \
         --run="$WANDB_RUN"
 fi
 
