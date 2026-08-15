@@ -54,7 +54,7 @@ chat() {
 }
 
 # --- Query 1: write a story -------------------------------------------------
-REQUEST="Schreib ein Abenteuer von Mira in das Raumschiff nur mit Aris"
+REQUEST="Schreib ein Abenteuer von Mira und Aris im Raumschiff Sternchen"
 echo "=== 1. Story request ==="
 echo "USER  : $REQUEST"
 STORY=$(chat "$(jq -n --arg c "$REQUEST" '[{role:"user",content:$c}]')" 400)
@@ -62,7 +62,7 @@ echo "ASSIST: $STORY"
 echo
 
 # --- Query 2: ask about that story ------------------------------------------
-QUESTION="Was hat Mira entdeckt?"
+QUESTION="Was hat Mira erlebt?"
 echo "=== 2. Question about the story ==="
 echo "USER  : $QUESTION"
 ANSWER=$(chat "$(jq -n --arg req "$REQUEST" --arg story "$STORY" --arg q "$QUESTION" \
