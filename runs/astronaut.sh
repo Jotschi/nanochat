@@ -41,6 +41,8 @@ TOTAL_BATCH_SIZE=${TOTAL_BATCH_SIZE:-131072}
 # Watch val_bpb: raise this while it still falls, stop when it turns.
 EPOCHS=${EPOCHS:-4}
 SFT_EPOCHS=${SFT_EPOCHS:-2}              # over the 25.7k conversations
+# Dense enough to see val_bpb turn upward, which is the signal to lower EPOCHS.
+EVAL_EVERY=${EVAL_EVERY:-50}
 # No --fp8: that needs Hopper, and this is an RTX 4090 (SM 89).
 # --window-pattern L: Flash Attention 3 is Hopper-only, so attention falls back
 # to SDPA, which warns loudly for any other pattern.
@@ -106,6 +108,7 @@ if has_stage base; then
         --total-batch-size="$TOTAL_BATCH_SIZE" \
         --window-pattern="$WINDOW_PATTERN" \
         --core-metric-every=-1 \
+        --eval-every="$EVAL_EVERY" \
         --run="$WANDB_RUN"
 fi
 

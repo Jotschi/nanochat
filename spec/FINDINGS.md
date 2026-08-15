@@ -94,6 +94,29 @@ reference story**. Under the old code those keys were shipped anyway, giving the
 RL stage targets it could not satisfy. The answer-turn key survives in 14,289 of
 14,289 cases (100%) — `QAGenerator`'s quality gate did verify that one.
 
+## 2b. First successful base run (d12, 855 iterations)
+
+The failure mode from §1 is gone. `lrm` decayed all the way to 0.05 by the final
+step, i.e. **the LR schedule actually completed** rather than sitting pinned at
+1.00. 14.9 minutes on one RTX 4090, 58% bf16 MFU, ~125k tok/s, peak 13.0 GiB.
+
+Samples after pretraining are coherent German children's stories, e.g.
+
+> Es war einmal ein kleiner Astronaut namens Kippo, der in einem Raumschiff
+> namens "Sternenwind" lebte. Eines Tages entdeckte er auf seinem Bildschirm
+> einen riesigen, leuchtenden Kometen, der direkt auf den Planeten "Mondlicht"
+> zuraste. …
+
+**Open issue: validation bpb turned upward.** Minimum 1.3139, final 1.4006. With
+warmdown driving the LR to ~0 the last evaluation should normally be the best
+one, so a rise means the model is overfitting the corpus, not that the schedule
+is wrong. The horizon needs shortening — a denser-eval sweep is being used to
+find where the curve bottoms out.
+
+**Process note:** the first run was piped through `tail -60`, which discarded
+every intermediate evaluation. Long runs write to
+`$NANOCHAT_BASE_DIR/logs/` instead.
+
 ## 3. Environment findings
 
 - **Upstream deleted the mid-training stage.** No `scripts/mid_train.py`, no `tasks/customjson.py`,
