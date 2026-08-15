@@ -43,6 +43,11 @@ EPOCHS=${EPOCHS:-4}
 SFT_EPOCHS=${SFT_EPOCHS:-2}              # over the 25.7k conversations
 # Dense enough to see val_bpb turn upward, which is the signal to lower EPOCHS.
 EVAL_EVERY=${EVAL_EVERY:-50}
+# ~1.5 passes over the val shard (6,644 stories ~= 1.4M tokens). The upstream
+# default of 80*524288 = 42M tokens would loop the same held-out data about 30
+# times per evaluation: same number, 20x the compute, and at EVAL_EVERY=50 that
+# costs more than the training it is measuring.
+EVAL_TOKENS=${EVAL_TOKENS:-2097152}
 # No --fp8: that needs Hopper, and this is an RTX 4090 (SM 89).
 # --window-pattern L: Flash Attention 3 is Hopper-only, so attention falls back
 # to SDPA, which warns loudly for any other pattern.
@@ -109,6 +114,7 @@ if has_stage base; then
         --window-pattern="$WINDOW_PATTERN" \
         --core-metric-every=-1 \
         --eval-every="$EVAL_EVERY" \
+        --eval-tokens="$EVAL_TOKENS" \
         --run="$WANDB_RUN"
 fi
 
