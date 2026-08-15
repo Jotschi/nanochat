@@ -17,7 +17,7 @@ Everything needed to do that lives in this one repository: the Java data generat
 | # | Criterion | How it is checked |
 | --- | --- | --- |
 | G1 | Base model produces fluent German prose from a bare prompt | `scripts/base_eval` samples on the German prompt list |
-| G2 | `val_bpb` decreases monotonically and the LR schedule completes | training log: `lrm` must reach ~0 at the final step |
+| G2 | The LR schedule completes, and the horizon ends at the validation minimum | training log: `lrm` reaches ~0 at the final step, and the last `val_bpb` is the run's lowest |
 | G3 | SFT model emits well-formed 2- and 4-turn conversations with the chat special tokens | `scripts/chat_cli` |
 | G4 | Requested keywords appear in the generated story | `rl_key1`/`rl_key2` presence check (`tasks/kleiner_astronaut.py`) |
 | G5 | The answer to the follow-up question contains the expected `answer_word` | German story-QA eval |

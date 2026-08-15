@@ -107,11 +107,35 @@ Samples after pretraining are coherent German children's stories, e.g.
 > einen riesigen, leuchtenden Kometen, der direkt auf den Planeten "Mondlicht"
 > zuraste. …
 
-**Open issue: validation bpb turned upward.** Minimum 1.3139, final 1.4006. With
-warmdown driving the LR to ~0 the last evaluation should normally be the best
-one, so a rise means the model is overfitting the corpus, not that the schedule
-is wrong. The horizon needs shortening — a denser-eval sweep is being used to
-find where the curve bottoms out.
+**Validation bpb turned upward.** Minimum 1.3139, final 1.4006. With warmdown
+driving the LR to ~0 the last evaluation should normally be the best one, so a
+rise means the model is overfitting the corpus rather than that the schedule is
+wrong.
+
+## 2c. Where the corpus runs out: the 6-epoch sweep
+
+`logs/sweep_e6_partial.log`, d12, 1,282-iteration schedule, evaluating every 50 steps:
+
+| step | val bpb | | step | val bpb |
+| --- | --- | --- | --- | --- |
+| 0 | 2.9274 | | 400 | 1.3470 |
+| 50 | 1.7459 | | 450 | 1.3376 |
+| 100 | 1.6447 | | 500 | 1.3325 |
+| 150 | 1.5283 | | **550** | **1.3296** ← minimum |
+| 200 | 1.4373 | | 600 | 1.3487 |
+| 250 | 1.3917 | | 650 | 1.3503 |
+| 300 | 1.3676 | | 700 | 1.3572 |
+| 350 | 1.3537 | | | |
+
+The turn at ~550 steps (≈2.6 epochs) is real overfitting, not a schedule
+artifact: `warmdown_ratio 0.65` means warmdown began at step 449, so the learning
+rate was **already decaying** when validation started getting worse. The run was
+stopped at 700 once the trend was unambiguous.
+
+**A checkpoint from the middle of a long schedule is not the model you want** —
+at step 550 of 1,282 the LR is still mid-warmdown. The horizon has to be chosen
+so the schedule *ends* near the minimum, which is why the next run is a full
+600-iteration schedule rather than an early checkpoint of this one.
 
 **Process note:** the first run was piped through `tail -60`, which discarded
 every intermediate evaluation. Long runs write to

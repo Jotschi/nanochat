@@ -94,14 +94,18 @@ if has_stage base; then
     echo "=== Stage: base ==="
     # Derive the horizon from the measured corpus rather than from
     # --target-param-data-ratio, whose default of 12 would imply ~30 epochs here.
-    NUM_ITERATIONS=$($PY -m nanochat.kleiner_astronaut --stats \
-        --total-batch-size "$TOTAL_BATCH_SIZE" --epochs "$EPOCHS" 2>/dev/null \
-        | awk -v e="$EPOCHS" '$1 == e && $2 == "epoch(s)" { gsub(/,/, "", $NF); print $NF }')
     if [ -z "${NUM_ITERATIONS:-}" ]; then
-        echo "Could not derive num_iterations from the corpus stats" >&2
-        exit 1
+        NUM_ITERATIONS=$($PY -m nanochat.kleiner_astronaut --stats \
+            --total-batch-size "$TOTAL_BATCH_SIZE" --epochs "$EPOCHS" 2>/dev/null \
+            | awk -v e="$EPOCHS" '$1 == e && $2 == "epoch(s)" { gsub(/,/, "", $NF); print $NF }')
+        if [ -z "${NUM_ITERATIONS:-}" ]; then
+            echo "Could not derive num_iterations from the corpus stats" >&2
+            exit 1
+        fi
+        echo "Corpus horizon: $EPOCHS epoch(s) => --num-iterations $NUM_ITERATIONS"
+    else
+        echo "Using explicit --num-iterations $NUM_ITERATIONS"
     fi
-    echo "Corpus horizon: $EPOCHS epoch(s) => --num-iterations $NUM_ITERATIONS"
 
     # --core-metric-every=-1: CORE is an English benchmark suite (ARC, HellaSwag,
     # SQuAD, ...). On a German story model it reports noise and costs minutes.
