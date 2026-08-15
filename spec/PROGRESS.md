@@ -55,7 +55,12 @@
 - [ ] SFT run; step-0 loss sane, train/val move together
 - [ ] `chat_astronaut_eval` baseline numbers
 - [ ] `chat_cli` end-to-end: story request, then a follow-up question
-- [ ] `pytest tests/ -m "not slow"` still passes
+- [x] Upstream tests still pass — 58 passed
+
+      bash runs/sandbox.sh bash -c 'uv run --group dev python -m pytest tests/ -m "not slow" -q'
+
+      Note the `python -m`: plain `uv run pytest` collects nothing because the repo root is
+      not on `sys.path`, and every test module fails to import.
 
 ## Measurements so far
 
