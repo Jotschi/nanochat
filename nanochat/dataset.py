@@ -24,7 +24,12 @@ BASE_URL = "https://huggingface.co/datasets/karpathy/climbmix-400b-shuffle/resol
 MAX_SHARD = 6542 # the last datashard is shard_06542.parquet
 index_to_filename = lambda index: f"shard_{index:05d}.parquet" # format of the filenames
 base_dir = get_base_dir()
-DATA_DIR = os.path.join(base_dir, "base_data_climbmix")
+# NANOCHAT_DATA_DIR redirects every consumer of the pretraining corpus at once:
+# the dataloader, tok_train and tok_eval all resolve shards through
+# list_parquet_files() below. Point it at a directory of parquet shards with a
+# "text" column to train on something other than ClimbMix, e.g. the shards
+# written by `python -m nanochat.kleiner_astronaut`.
+DATA_DIR = os.environ.get("NANOCHAT_DATA_DIR") or os.path.join(base_dir, "base_data_climbmix")
 
 # -----------------------------------------------------------------------------
 # These functions are useful utilities to other modules, can/should be imported
@@ -32,6 +37,14 @@ DATA_DIR = os.path.join(base_dir, "base_data_climbmix")
 def list_parquet_files(data_dir=None, warn_on_legacy=False):
     """ Looks into a data dir and returns full paths to all parquet files. """
     data_dir = DATA_DIR if data_dir is None else data_dir
+
+    # An explicit NANOCHAT_DATA_DIR is a deliberate choice, so a missing directory
+    # is a mistake worth reporting rather than silently falling back to ClimbMix.
+    if not os.path.exists(data_dir) and os.environ.get("NANOCHAT_DATA_DIR"):
+        raise FileNotFoundError(
+            f"NANOCHAT_DATA_DIR points at {data_dir}, which does not exist. "
+            "Run `python -m nanochat.kleiner_astronaut` to materialize the shards."
+        )
 
     # Legacy-supporting code due to the upgrade from FinewebEdu-100B to ClimbMix-400B
     # This code will eventually be deleted.

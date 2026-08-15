@@ -168,20 +168,29 @@ def main():
         print0("Model Samples")
         print0("="*80)
         if ddp_rank == 0:
-            prompts = [
-                "The capital of France is",
-                "The chemical symbol of gold is",
-                "If yesterday was Friday, then tomorrow will be",
-                "The opposite of hot is",
-                "The planets of the solar system are:",
-                "My favorite color is",
-                "If 5*x + 3 = 13, then x is",
-            ]
+            # NANOCHAT_SAMPLE_PROMPTS overrides these (newline separated), because
+            # English factual probes say nothing about a German story model.
+            # runs/astronaut.sh sets the Kleiner Astronaut prompts.
+            env_prompts = os.environ.get("NANOCHAT_SAMPLE_PROMPTS")
+            if env_prompts:
+                prompts = [p for p in env_prompts.split("\n") if p.strip()]
+            else:
+                prompts = [
+                    "The capital of France is",
+                    "The chemical symbol of gold is",
+                    "If yesterday was Friday, then tomorrow will be",
+                    "The opposite of hot is",
+                    "The planets of the solar system are:",
+                    "My favorite color is",
+                    "If 5*x + 3 = 13, then x is",
+                ]
+            # Story continuations need more than a few tokens to be judgeable.
+            sample_tokens = int(os.environ.get("NANOCHAT_SAMPLE_TOKENS", "16"))
             engine = Engine(model, tokenizer)
             print0("\nConditioned samples:")
             for prompt in prompts:
                 tokens = tokenizer(prompt, prepend="<|bos|>")
-                sample, _ = engine.generate_batch(tokens, num_samples=1, max_tokens=16, temperature=0)
+                sample, _ = engine.generate_batch(tokens, num_samples=1, max_tokens=sample_tokens, temperature=0)
                 sample_str = tokenizer.decode(sample[0])
                 print0("-" * 80)
                 print0(sample_str)
