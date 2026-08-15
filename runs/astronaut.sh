@@ -96,6 +96,8 @@ if has_stage base; then
     fi
     echo "Corpus horizon: $EPOCHS epoch(s) => --num-iterations $NUM_ITERATIONS"
 
+    # --core-metric-every=-1: CORE is an English benchmark suite (ARC, HellaSwag,
+    # SQuAD, ...). On a German story model it reports noise and costs minutes.
     $TORCHRUN -m scripts.base_train -- \
         --depth="$DEPTH" \
         --num-iterations="$NUM_ITERATIONS" \
@@ -103,6 +105,7 @@ if has_stage base; then
         --device-batch-size="$DEVICE_BATCH_SIZE" \
         --total-batch-size="$TOTAL_BATCH_SIZE" \
         --window-pattern="$WINDOW_PATTERN" \
+        --core-metric-every=-1 \
         --run="$WANDB_RUN"
 fi
 
@@ -111,7 +114,7 @@ if has_stage base_eval; then
     # CORE is an English benchmark suite; only bpb and samples mean anything here.
     $TORCHRUN -m scripts.base_eval -- \
         --device-batch-size="$DEVICE_BATCH_SIZE" \
-        --eval-modes=bpb,sample
+        --eval=bpb,sample
 fi
 
 # -----------------------------------------------------------------------------

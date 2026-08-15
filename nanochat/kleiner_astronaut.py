@@ -177,18 +177,47 @@ def materialize(out_dir, patterns, val_fraction=VAL_FRACTION, include_hf=False, 
     return n_train, n_val, total_chars
 
 
+def _measured_chars_per_token(sample_texts):
+    """
+    Compression ratio from the trained tokenizer, or None if there isn't one yet.
+
+    Measuring beats guessing: on this corpus the real ratio is ~4.6, so the 3.8
+    fallback overestimates the token count by about 20% and would stretch the
+    training horizon by the same amount.
+    """
+    try:
+        from nanochat.tokenizer import get_tokenizer
+        tokenizer = get_tokenizer()
+    except Exception:
+        return None
+    chars = sum(len(t) for t in sample_texts)
+    tokens = sum(len(ids) for ids in tokenizer.encode(sample_texts))
+    return chars / tokens if tokens else None
+
+
 def report_stats(patterns, include_hf, total_batch_size, epochs, chars_per_token):
     n = 0
     total_chars = 0
+    sample = []
     for _, text in iter_stories(patterns, include_hf=include_hf):
         n += 1
         total_chars += len(text)
+        if len(sample) < 2000:
+            sample.append(text)
+
+    measured = _measured_chars_per_token(sample)
+    if measured is not None:
+        chars_per_token = measured
+        source = "measured with the trained tokenizer"
+    else:
+        source = f"estimate; train the tokenizer for a real number"
+
     tokens = total_chars / chars_per_token
     print()
     print(f"Unique stories       : {n:,}")
     print(f"Total characters     : {total_chars:,}")
     print(f"Average chars/story  : {total_chars // max(n, 1):,}")
-    print(f"Estimated tokens     : {tokens:,.0f}  (at {chars_per_token} chars/token)")
+    print(f"Corpus tokens        : {tokens:,.0f}  ({chars_per_token:.2f} chars/token, {source})")
     print()
     print("Training horizon -- see spec/TRAINING_STRATEGY.md. Set --num-iterations")
     print("explicitly; --target-param-data-ratio would imply far more epochs than")

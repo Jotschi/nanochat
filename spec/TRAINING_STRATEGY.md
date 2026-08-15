@@ -15,9 +15,14 @@ Corollaries:
 
 ## Scale
 
-Corpus: **133,204 stories / 128.3M chars ≈ 34M tokens** (see [DATA.md](DATA.md)).
+Corpus: **133,204 stories / 128,303,041 chars = 28.0M tokens** measured with the trained
+tokenizer (see [DATA.md](DATA.md)).
 
 Model: **d12**, `--vocab-size 8192`.
+
+The vocabulary size is settled: at 8,192 the tokenizer compresses this corpus at
+**4.58 chars/token**, beating GPT-2 (2.67) and GPT-4 (3.48) on the same text. There is no
+case for going to 16,384 — that would only inflate the embedding table.
 
 | | |
 | --- | --- |
@@ -35,15 +40,24 @@ ratio (below ~3.5 chars/token), 16,384 is comfortably supportable at this corpus
 
 ## Token budget
 
-Do **not** rely on `--target-param-data-ratio` here. Its default of 12 implies ~1B tokens ≈ 30 epochs
-over a 34M-token corpus. Instead:
+Do **not** rely on `--target-param-data-ratio` here. Its default of 12 implies ~1B tokens ≈ 36 epochs
+over a 28M-token corpus. Instead:
 
 ```
 num_iterations = epochs × corpus_tokens / total_batch_size
 ```
 
-Start at **3–4 epochs**. `python -m nanochat.kleiner_astronaut --stats` prints `corpus_tokens` and the
-implied iteration count for a given batch size.
+`python -m nanochat.kleiner_astronaut --stats` prints `corpus_tokens` (measured with the real
+tokenizer when one exists) and the implied iteration count. `runs/astronaut.sh` derives
+`--num-iterations` from it automatically.
+
+**Batch size: 131,072 tokens, not the usual 524,288.** At a 512k batch this corpus gives only 65
+optimizer steps per epoch, which is far too few updates. A quarter of that gives 214 steps/epoch.
+nanochat rescales the LR by `sqrt(B/B_ref)` on its own, so this needs no matching LR change.
+
+At 4 epochs that is **855 iterations**. Repeating data up to ~4 epochs is close to as good as fresh
+data (Muennighoff et al., *Scaling Data-Constrained Language Models*); past that returns diminish but
+stay positive out to ~16. Raise `EPOCHS` while `val_bpb` still falls, stop when it turns.
 
 ## Hardware
 

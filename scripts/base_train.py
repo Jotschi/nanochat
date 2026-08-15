@@ -456,20 +456,28 @@ while True:
     # use the original uncompiled model because the inputs keep changing shape
     if args.sample_every > 0 and master_process and (last_step or (step > 0 and step % args.sample_every == 0)):
         model.eval()
-        prompts = [
-            "The capital of France is",
-            "The chemical symbol of gold is",
-            "If yesterday was Friday, then tomorrow will be",
-            "The opposite of hot is",
-            "The planets of the solar system are:",
-            "My favorite color is",
-            "If 5*x + 3 = 13, then x is",
-        ]
+        # NANOCHAT_SAMPLE_PROMPTS overrides these (newline separated). English
+        # factual probes tell you nothing when pretraining on a German corpus;
+        # runs/astronaut.sh sets the Kleiner Astronaut prompts.
+        env_prompts = os.environ.get("NANOCHAT_SAMPLE_PROMPTS")
+        if env_prompts:
+            prompts = [p for p in env_prompts.split("\n") if p.strip()]
+        else:
+            prompts = [
+                "The capital of France is",
+                "The chemical symbol of gold is",
+                "If yesterday was Friday, then tomorrow will be",
+                "The opposite of hot is",
+                "The planets of the solar system are:",
+                "My favorite color is",
+                "If 5*x + 3 = 13, then x is",
+            ]
+        sample_tokens = int(os.environ.get("NANOCHAT_SAMPLE_TOKENS", "16"))
         engine = Engine(orig_model, tokenizer) # use orig_model to avoid recompilation
         for prompt in prompts:
             tokens = tokenizer(prompt, prepend="<|bos|>")
             with disable_fp8(orig_model):
-                sample, _ = engine.generate_batch(tokens, num_samples=1, max_tokens=16, temperature=0)
+                sample, _ = engine.generate_batch(tokens, num_samples=1, max_tokens=sample_tokens, temperature=0)
             print0(tokenizer.decode(sample[0]))
         model.train()
 
