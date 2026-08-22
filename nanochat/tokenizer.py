@@ -18,6 +18,7 @@ SPECIAL_TOKENS = [
     "<|python_end|>",
     "<|output_start|>", # python REPL outputs back to assistant
     "<|output_end|>",
+    "<|image|>", # placeholder for visual token positions in VLM (value-embeddings lookup)
 ]
 
 # NOTE: this split pattern deviates from GPT-4 in that we use \p{N}{1,2} instead of \p{N}{1,3}

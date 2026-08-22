@@ -9,6 +9,8 @@ import torch
 
 from nanochat.common import get_base_dir
 from nanochat.gpt import GPT, GPTConfig
+from nanochat.vit import ViT, ViTConfig
+from nanochat.vlm import VLM
 from nanochat.tokenizer import get_tokenizer
 from nanochat.common import setup_default_logging
 
@@ -112,6 +114,73 @@ def build_model(checkpoint_dir, step, device, phase):
     # Sanity check: compatibility between model and tokenizer
     assert tokenizer.get_vocab_size() == model_config_kwargs["vocab_size"], f"Tokenizer vocab size {tokenizer.get_vocab_size()} does not match model config vocab size {model_config_kwargs['vocab_size']}"
     return model, tokenizer, meta_data
+
+
+def build_vlm(checkpoint_dir, step, device, phase):
+    """
+    Build a VLM (ViT + GPT) from a checkpoint.
+    Returns:
+    - vlm - uncompiled, not wrapped in DDP
+    - tokenizer
+    - meta data saved during training
+    """
+    assert phase in ["train", "eval"], f"Invalid phase: {phase}"
+    model_data, optimizer_data, meta_data = load_checkpoint(checkpoint_dir, step, device, load_optimizer=False)
+    if device.type in {"cpu", "mps"}:
+        model_data = {
+            k: v.float() if v.dtype == torch.bfloat16 else v
+            for k, v in model_data.items()
+        }
+    # Hack: fix torch compile issue, which prepends all keys with _orig_mod.
+    model_data = {k.removeprefix("_orig_mod."): v for k, v in model_data.items()}
+    gpt_config_kwargs = meta_data["gpt_config"]
+    _patch_missing_config_keys(gpt_config_kwargs)
+    vit_config_kwargs = meta_data["vit_config"]
+    image_token_id = meta_data["image_token_id"]
+    log0(f"Building VLM with gpt config: {gpt_config_kwargs}")
+    log0(f"Building VLM with vit config: {vit_config_kwargs}")
+    gpt_config = GPTConfig(**gpt_config_kwargs)
+    vit_config = ViTConfig(**vit_config_kwargs)
+    with torch.device("meta"):
+        vlm = VLM(gpt_config, vit_config, image_token_id)
+    # Load the model state
+    vlm.to_empty(device=device)
+    vlm.gpt.init_weights()  # needed to init the rotary embeddings
+    vlm.vit.init_weights()
+    vlm.load_state_dict(model_data, strict=True, assign=True)
+    # Put the model in the right training phase / mode
+    if phase == "eval":
+        vlm.eval()
+    else:
+        vlm.train()
+    # Load the Tokenizer
+    tokenizer = get_tokenizer()
+    # Sanity check: compatibility between model and tokenizer
+    assert tokenizer.get_vocab_size() == gpt_config_kwargs["vocab_size"], f"Tokenizer vocab size {tokenizer.get_vocab_size()} does not match model config vocab size {gpt_config_kwargs['vocab_size']}"
+    return vlm, tokenizer, meta_data
+
+
+def load_vlm_from_dir(checkpoints_dir, device, phase, model_tag=None, step=None):
+    if model_tag is None:
+        model_tag = find_largest_model(checkpoints_dir)
+        log0(f"No model tag provided, guessing model tag: {model_tag}")
+    checkpoint_dir = os.path.join(checkpoints_dir, model_tag)
+    if step is None:
+        step = find_last_step(checkpoint_dir)
+    assert step is not None, f"No checkpoints found in {checkpoint_dir}"
+    log0(f"Loading VLM from {checkpoint_dir} with step {step}")
+    vlm, tokenizer, meta_data = build_vlm(checkpoint_dir, step, device, phase)
+    return vlm, tokenizer, meta_data
+
+
+def load_vlm(source, *args, **kwargs):
+    model_dir = {
+        "vlm": "vlm_checkpoints",
+        "vlm_sft": "vlm_sft_checkpoints",
+    }[source]
+    base_dir = get_base_dir()
+    checkpoints_dir = os.path.join(base_dir, model_dir)
+    return load_vlm_from_dir(checkpoints_dir, *args, **kwargs)
 
 
 def find_largest_model(checkpoints_dir):

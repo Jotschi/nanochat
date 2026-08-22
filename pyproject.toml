@@ -8,6 +8,7 @@ dependencies = [
     "filelock>=3.19.0",
     "kernels>=0.11.7",
     "numpy>=1.26.0",
+    "pillow>=10.0.0",
     "psutil>=7.1.0",
     "pyarrow>=21.0.0",
     "rustbpe>=0.1.0",
