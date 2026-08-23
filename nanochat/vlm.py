@@ -187,12 +187,14 @@ class VLM(nn.Module):
         gpt_smear_params = [self.gpt.smear_gate.weight, self.gpt.smear_lambda, self.gpt.backout_lambda]
 
         # ViT params
+        # Muon only supports 2D matrix params. The Conv2d patch_embed weight is 4D
+        # (out, in, kH, kW) and must go to AdamW, not Muon.
         vit_matrix_params = []
         vit_embedding_params = []
         for name, param in self.vit.named_parameters():
             if 'pos_embed' in name:
                 vit_embedding_params.append(param)
-            elif param.ndim >= 2:
+            elif param.ndim == 2:
                 vit_matrix_params.append(param)
             else:
                 vit_embedding_params.append(param)

@@ -36,7 +36,9 @@ from nanochat.common import get_base_dir, print0
 BASE_DIR = os.path.join(get_base_dir(), "coco")
 IMAGES_DIR = os.path.join(BASE_DIR, "val2014")
 IMAGES_ZIP_URL = "http://images.cocodataset.org/zips/val2014.zip"
-CAPTIONS_URL = "http://images.cocodataset.org/annotations/captions_val2014.json"
+# COCO does not host a standalone captions_val2014.json; captions ship inside the
+# annotations zip. We download that and extract captions_val2014.json from it.
+ANNOTATIONS_ZIP_URL = "http://images.cocodataset.org/annotations/annotations_trainval2014.zip"
 PARQUET_PATH = os.path.join(BASE_DIR, "coco_captions.parquet")
 
 # Image preprocessing constants (must match ViTConfig.image_size)
@@ -66,18 +68,31 @@ def prepare_coco(max_images=None):
     """
     os.makedirs(IMAGES_DIR, exist_ok=True)
 
-    # 1) Download and extract images
-    images_zip = os.path.join(BASE_DIR, "val2014.zip")
-    _download(IMAGES_ZIP_URL, images_zip)
+    # 1) Download and extract images (only if not already present)
     if not os.listdir(IMAGES_DIR):
+        images_zip = os.path.join(BASE_DIR, "val2014.zip")
+        _download(IMAGES_ZIP_URL, images_zip)
         print0("Extracting images...")
         with zipfile.ZipFile(images_zip, "r") as z:
             z.extractall(IMAGES_DIR)
         os.remove(images_zip)  # free space after extraction
+        # The val2014.zip extracts into a nested val2014/val2014/ folder; flatten it.
+        nested = os.path.join(IMAGES_DIR, "val2014")
+        if os.path.isdir(nested):
+            print0("Flattening nested val2014/val2014/ directory...")
+            for fname in os.listdir(nested):
+                os.replace(os.path.join(nested, fname), os.path.join(IMAGES_DIR, fname))
+            os.rmdir(nested)
 
-    # 2) Download captions
+    # 2) Download captions (from the annotations zip, which contains captions_val2014.json)
     captions_path = os.path.join(BASE_DIR, "captions_val2014.json")
-    _download(CAPTIONS_URL, captions_path)
+    if not os.path.exists(captions_path):
+        ann_zip = os.path.join(BASE_DIR, "annotations_trainval2014.zip")
+        _download(ANNOTATIONS_ZIP_URL, ann_zip)
+        with zipfile.ZipFile(ann_zip, "r") as z:
+            z.extract("annotations/captions_val2014.json", BASE_DIR)
+        os.replace(os.path.join(BASE_DIR, "annotations", "captions_val2014.json"), captions_path)
+        os.remove(ann_zip)  # free space after extraction
     with open(captions_path, "r") as f:
         captions_data = json.load(f)
 
@@ -170,11 +185,11 @@ class COCODataset:
         self.table = pq.read_table(self.parquet_path)
         # Simple train/val split: last 10% of rows for val
         n = len(self.table)
+        split_point = int(n * 0.9)
         if split == "val":
-            start = int(n * 0.9)
-            self.table = self.table.slice(start)
+            self.table = self.table.slice(split_point)
         else:
-            self.table = self.table.slice(0, start)
+            self.table = self.table.slice(0, split_point)
         if max_rows is not None:
             self.table = self.table.slice(0, max_rows)
 

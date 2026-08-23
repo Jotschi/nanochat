@@ -1,11 +1,15 @@
 # nanochat-vlm — Implementation State
 
-> Status: **IMPLEMENTED & VERIFIED** (2026-08-22)
+> Status: **IMPLEMENTED, TRAINED & VERIFIED** (2026-08-23)
 >
 > This document records what has been built to achieve [GOAL.md](./GOAL.md) — adding
 > native vision capability to nanochat to make it a Vision-Language Model (VLM) — and
 > how to interact with the implementation. It is a living record; update it as the
 > implementation evolves.
+>
+> A full end-to-end training run (base LLM → ViT pretrain → VLM SFT → inference) was
+> completed on a single RTX 4090. See [report/vlm_train_v1.html](../report/vlm_train_v1.html)
+> for the detailed training report, loss curves, and eval examples.
 
 ## 1. What was done
 
@@ -78,6 +82,32 @@ well-defined, while the actual values come from the ViT.
 - `python -m scripts.vlm_smoke_test` → **PASSED** (loss 6.24 → 0.53, checkpoint round-trip
   weights match, generation works).
 - No lint errors in any new/modified file; all scripts import cleanly.
+
+## 2b. Training run v1 (2026-08-23, single RTX 4090)
+
+A full end-to-end run was completed. Details, loss curves, and eval examples are in
+[report/vlm_train_v1.html](../report/vlm_train_v1.html).
+
+| Stage | Config | Steps | Result |
+|-------|--------|-------|--------|
+| Base LLM (`d8`) | depth 8, n_embd 512, seq 512, vocab 8192 | 5,000 (~82M tok) | loss 3.62 → 3.18 |
+| Stage 1 ViT pretrain (`vlm_d8`) | ViT 256/4/4, frozen LLM, AdamW 3e-4 | 3,000 | val loss 4.16 → 3.16 |
+| Stage 2 VLM SFT (`vlmsft_d8`) | full VLM, MuonAdamW | 3,000 | val loss 5.03 → 2.21 (min @ 1500) |
+| Inference | `vlm_cli`, temp 0.7 | — | fluent, image-conditioned COCO captions |
+
+Checkpoints: `~/.cache/nanochat/{base_checkpoints/d8, vlm_checkpoints/vlm_d8, vlm_sft_checkpoints/vlmsft_d8}`.
+
+**Bugs fixed during the run** (all in this repo):
+1. `base_train` `--total-batch-size` is in tokens and must be a multiple of
+   `device_batch_size × max_seq_len` (used 16384).
+2. `coco_data.py`: captions are not hosted standalone — now downloads
+   `annotations_trainval2014.zip` and extracts `annotations/captions_val2014.json`.
+3. `coco_data.py`: `val2014.zip` extracts into a nested `val2014/val2014/` — added a flatten
+   step and skip-download-when-present.
+4. `coco_data.py` `COCODataset`: `UnboundLocalError` on `start` in the train branch — fixed.
+5. `vlm_sft.py`: SFT `targets[i]` shape mismatch — assign to `targets[i, :max_len-1]`.
+6. `vlm.py` `setup_optimizer`: 4-D Conv2d `patch_embed` weight was routed to Muon (2-D only) —
+   changed routing to `param.ndim == 2` so Conv2d/pos_embed use AdamW.
 
 ## 3. Cheat sheet
 

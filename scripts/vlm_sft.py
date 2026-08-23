@@ -212,7 +212,7 @@ def vlm_data_generator(dataset, buffer_size=100):
             # position t predicts ids[t+1]; supervise where mask[t+1] == 1
             shifted_mask = mask[i, 1:]
             shifted_ids = ids[i, 1:]
-            targets[i] = torch.where(shifted_mask == 1, shifted_ids, torch.tensor(-1))
+            targets[i, :max_len - 1] = torch.where(shifted_mask == 1, shifted_ids, torch.tensor(-1))
         yield (
             images.to(device=device, non_blocking=True),
             ids.to(device=device, dtype=torch.int32, non_blocking=True).contiguous(),

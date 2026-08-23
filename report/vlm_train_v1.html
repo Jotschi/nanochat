@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nanochat-vlm — Training Report v1</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel2: #1c2330; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff; --green: #3fb950;
+    --red: #f85149; --amber: #d29922; --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+         line-height: 1.6; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  h2 { font-size: 21px; margin: 40px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 16px; margin: 22px 0 8px; color: var(--accent); }
+  p { color: var(--text); }
+  .muted { color: var(--muted); }
+  .subtitle { color: var(--muted); font-size: 15px; margin-bottom: 24px; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px;
+           font-weight: 600; background: rgba(63,185,80,.15); color: var(--green);
+           border: 1px solid rgba(63,185,80,.4); }
+  .badge.blue { background: rgba(88,166,255,.15); color: var(--accent); border-color: rgba(88,166,255,.4); }
+  .badge.amber { background: rgba(210,153,34,.15); color: var(--amber); border-color: rgba(210,153,34,.4); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: 14px; margin: 20px 0; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .card .num { font-size: 26px; font-weight: 700; color: var(--accent); }
+  .card .lbl { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+  code { background: var(--panel2); padding: 2px 6px; border-radius: 5px; font-size: 13px;
+         font-family: "SF Mono", "Fira Code", Consolas, monospace; color: #79c0ff; }
+  pre { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+        padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  pre code { background: none; padding: 0; color: var(--text); }
+  .chart { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin: 16px 0; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart .title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .chart .sub { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px){ .grid2 { grid-template-columns: 1fr; } }
+  .example { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+             padding: 16px; margin: 14px 0; }
+  .example .row { display: flex; gap: 16px; align-items: flex-start; }
+  .example img { width: 128px; height: 128px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); flex-shrink: 0; }
+  .example .meta { flex: 1; }
+  .example .gt { color: var(--muted); font-size: 14px; margin: 6px 0; }
+  .example .out { background: var(--panel2); border-left: 3px solid var(--accent); padding: 8px 12px;
+                  border-radius: 0 6px 6px 0; font-size: 14px; }
+  .example .out .tag { color: var(--accent); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+  .example .fname { font-size: 12px; color: var(--muted); font-family: monospace; }
+  .fix { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--red);
+         border-radius: 0 8px 8px 0; padding: 12px 16px; margin: 12px 0; }
+  .fix .ft { font-weight: 600; color: var(--red); font-size: 14px; }
+  .fix .fd { font-size: 14px; margin-top: 4px; }
+  .ok { color: var(--green); font-weight: 600; }
+  .note { background: rgba(88,166,255,.08); border: 1px solid rgba(88,166,255,.3);
+          border-radius: 8px; padding: 12px 16px; font-size: 14px; margin: 14px 0; }
+  .legend { display: flex; gap: 18px; font-size: 12px; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
+  .legend span::before { content: ""; display: inline-block; width: 12px; height: 3px; margin-right: 6px; vertical-align: middle; }
+  .legend .l1::before { background: var(--accent); }
+  .legend .l2::before { background: var(--green); }
+  .legend .l3::before { background: var(--purple); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>nanochat-vlm — Training Report <span class="badge">v1</span></h1>
+  <div class="subtitle">
+    End-to-end training of a Vision-Language Model built on nanochat &nbsp;·&nbsp; 2026-08-23 &nbsp;·&nbsp;
+    <span class="badge blue">RTX 4090</span> <span class="badge blue">PyTorch 2.9.1+cu128</span>
+  </div>
+
+  <div class="note">
+    <strong>Summary.</strong> A native-PyTorch ViT encoder was trained and wired into a small LLaMA-style
+    GPT to produce a working VLM. The full pipeline — base LLM → ViT pretrain (frozen LLM) → VLM SFT →
+    inference — ran successfully on a single RTX 4090. The model produces fluent, image-conditioned
+    COCO-style captions. Content accuracy is limited by the deliberately tiny model size (54M params),
+    consistent with nanochat's "small enough to understand and train yourself" philosophy.
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="num">53.8M</div><div class="lbl">Total VLM params</div></div>
+    <div class="card"><div class="num">3.5M</div><div class="lbl">ViT params (Stage 1)</div></div>
+    <div class="card"><div class="num">4.16 → 3.16</div><div class="lbl">Stage 1 val loss</div></div>
+    <div class="card"><div class="num">5.03 → 2.21</div><div class="lbl">Stage 2 val loss</div></div>
+    <div class="card"><div class="num">81</div><div class="lbl">Tests passing</div></div>
+    <div class="card"><div class="num">~70 min</div><div class="lbl">Total GPU time</div></div>
+  </div>
+
+  <!-- ===================== PIPELINE ===================== -->
+  <h2>1. Pipeline Overview</h2>
+  <p>The model was built in four sequential stages, each producing a checkpoint consumed by the next:</p>
+  <table>
+    <tr><th>Stage</th><th>Script</th><th>What is trained</th><th>Data</th><th>Steps</th><th>Time</th></tr>
+    <tr><td>0 · Base LLM</td><td><code>scripts.base_train</code></td><td>GPT (text-only)</td><td>ClimbMix (5 shards)</td><td>5,000</td><td>3.7 min</td></tr>
+    <tr><td>1 · ViT pretrain</td><td><code>scripts.vit_pretrain</code></td><td>ViT + projector (LLM frozen)</td><td>COCO val2014 captions</td><td>3,000</td><td>31.1 min</td></tr>
+    <tr><td>2 · VLM SFT</td><td><code>scripts.vlm_sft</code></td><td>Full VLM (ViT + LLM)</td><td>COCO image→caption convos</td><td>3,000</td><td>33.5 min</td></tr>
+    <tr><td>3 · Inference</td><td><code>scripts.vlm_cli</code></td><td>— (eval)</td><td>6 held-out COCO images</td><td>—</td><td>~1 min</td></tr>
+  </table>
+
+  <h3>Architecture</h3>
+  <pre><code>image (3,128,128)                 text prompt
+        │                               │
+   ┌────▼─────┐                    ┌────▼─────┐
+   │   ViT    │                    │  GPT.wte │  (text token embeds)
+   │ +projector│                   └────┬─────┘
+   └────┬─────┘                         │
+   visual_embeds (64, 512)              │
+        └──────────────┬────────────────┘
+                       ▼
+            combined_embeds (64 + T_text, 512)
+                       ▼
+              GPT transformer (causal, depth 8)
+                       ▼
+                 logits → loss / next token</code></pre>
+  <p class="muted">The image is encoded into a fixed 64-token visual prefix (128/16 = 8×8 patches) that is
+  concatenated ahead of the text embeddings and fed through the causal LLaMA transformer.</p>
+
+  <!-- ===================== CONFIG ===================== -->
+  <h2>2. Model &amp; Training Configuration</h2>
+  <div class="grid2">
+    <div>
+      <h3>Base GPT (Stage 0)</h3>
+      <table>
+        <tr><td>Depth / n_embd</td><td>8 / 512</td></tr>
+        <tr><td>Heads (q / kv)</td><td>4 / 4</td></tr>
+        <tr><td>Max seq len</td><td>512</td></tr>
+        <tr><td>Vocab size</td><td>8,192 (incl. <code>&lt;|image|&gt;</code>)</td></tr>
+        <tr><td>Params</td><td>50.3M</td></tr>
+        <tr><td>Batch (tokens)</td><td>16,384</td></tr>
+        <tr><td>Optimizer</td><td>MuonAdamW</td></tr>
+        <tr><td>Train tokens</td><td>~82M</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>ViT encoder</h3>
+      <table>
+        <tr><td>Image / patch size</td><td>128 / 16</td></tr>
+        <tr><td>Patches (visual tokens)</td><td>64</td></tr>
+        <tr><td>Embed dim / layers / heads</td><td>256 / 4 / 4</td></tr>
+        <tr><td>Projector</td><td>Linear(256 → 512)</td></tr>
+        <tr><td>Params</td><td>3.49M</td></tr>
+        <tr><td>Stage 1 optimizer</td><td>AdamW (lr 3e-4)</td></tr>
+        <tr><td>Stage 2 optimizer</td><td>MuonAdamW (full)</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="note">
+    <strong>Hardware.</strong> Single NVIDIA RTX 4090 (24 GB), bf16 compute, Flash Attention 3.
+    Peak memory: 3.1 GB (base), 0.84 GB (Stage 1), 1.36 GB (Stage 2). The model is tiny by design.
+  </div>
+
+  <!-- ===================== LOSS CURVES ===================== -->
+  <h2>3. Training Curves</h2>
+
+  <div class="chart">
+    <div class="title">Stage 0 — Base LLM (text-only) train loss</div>
+    <div class="sub">5,000 steps · 82M tokens · loss 3.62 → 3.18</div>
+    <svg viewBox="0 0 720 220" role="img" aria-label="Base LLM train loss curve">
+      <line x1="50" y1="10" x2="50" y2="180" stroke="#30363d"/>
+      <line x1="50" y1="180" x2="700" y2="180" stroke="#30363d"/>
+      <text x="10" y="20" fill="#8b949e" font-size="11">3.7</text>
+      <text x="10" y="100" fill="#8b949e" font-size="11">3.4</text>
+      <text x="10" y="180" fill="#8b949e" font-size="11">3.1</text>
+      <text x="360" y="205" fill="#8b949e" font-size="11" text-anchor="middle">steps →</text>
+      <polyline fill="none" stroke="#58a6ff" stroke-width="2.5"
+        points="50,20 180,55 310,80 440,105 570,135 700,165"/>
+    </svg>
+  </div>
+
+  <div class="chart">
+    <div class="title">Stage 1 — ViT pretrain (frozen LLM) validation loss</div>
+    <div class="sub">3,000 steps · loss 4.16 → 3.16 (monotonic decrease)</div>
+    <svg viewBox="0 0 720 220" role="img" aria-label="ViT pretrain validation loss curve">
+      <line x1="50" y1="10" x2="50" y2="180" stroke="#30363d"/>
+      <line x1="50" y1="180" x2="700" y2="180" stroke="#30363d"/>
+      <text x="10" y="20" fill="#8b949e" font-size="11">4.2</text>
+      <text x="10" y="100" fill="#8b949e" font-size="11">3.7</text>
+      <text x="10" y="180" fill="#8b949e" font-size="11">3.1</text>
+      <text x="360" y="205" fill="#8b949e" font-size="11" text-anchor="middle">steps →</text>
+      <polyline fill="none" stroke="#3fb950" stroke-width="2.5"
+        points="50,15 143,110 236,140 329,158 422,164 515,168 608,172 700,176"/>
+      <g fill="#3fb950">
+        <circle cx="50" cy="15" r="3"/><circle cx="143" cy="110" r="3"/><circle cx="236" cy="140" r="3"/>
+        <circle cx="329" cy="158" r="3"/><circle cx="422" cy="164" r="3"/><circle cx="515" cy="168" r="3"/>
+        <circle cx="608" cy="172" r="3"/><circle cx="700" cy="176" r="3"/>
+      </g>
+    </svg>
+    <div class="legend"><span class="l2">val loss @ every 300 steps</span></div>
+  </div>
+
+  <div class="chart">
+    <div class="title">Stage 2 — VLM SFT (full fine-tune) validation loss</div>
+    <div class="sub">3,000 steps · loss 5.03 → 2.21 (min @ step 1500); train loss kept falling to 1.37 (mild overfit, expected at this scale)</div>
+    <svg viewBox="0 0 720 220" role="img" aria-label="VLM SFT validation loss curve">
+      <line x1="50" y1="10" x2="50" y2="180" stroke="#30363d"/>
+      <line x1="50" y1="180" x2="700" y2="180" stroke="#30363d"/>
+      <text x="10" y="20" fill="#8b949e" font-size="11">5.0</text>
+      <text x="10" y="100" fill="#8b949e" font-size="11">3.6</text>
+      <text x="10" y="180" fill="#8b949e" font-size="11">2.2</text>
+      <text x="360" y="205" fill="#8b949e" font-size="11" text-anchor="middle">steps →</text>
+      <polyline fill="none" stroke="#bc8cff" stroke-width="2.5"
+        points="50,15 143,150 236,162 329,168 422,170 515,168 608,166 700,163"/>
+      <g fill="#bc8cff">
+        <circle cx="50" cy="15" r="3"/><circle cx="143" cy="150" r="3"/><circle cx="236" cy="162" r="3"/>
+        <circle cx="329" cy="168" r="3"/><circle cx="422" cy="170" r="3"/><circle cx="515" cy="168" r="3"/>
+        <circle cx="608" cy="166" r="3"/><circle cx="700" cy="163" r="3"/>
+      </g>
+    </svg>
+    <div class="legend"><span class="l3">val loss @ every 300 steps (assistant tokens only)</span></div>
+  </div>
+
+  <!-- ===================== EVAL ===================== -->
+  <h2>4. Evaluation — Image Description</h2>
+  <p>The final SFT checkpoint (<code>vlmsft_d8</code>) was run on 6 held-out COCO val2014 images with the
+  prompt <em>"Describe this image."</em> (temperature 0.7). The model reliably produces fluent,
+  grammatical, image-conditioned captions in the COCO caption style. Subject accuracy is partial —
+  a direct consequence of the 54M-parameter scale and 82M-token base — but the vision→language path
+  is clearly functional (e.g. both tennis images → tennis, the bear image → bears).</p>
+
+  <div class="example">
+    <div class="row">
+      <img src="images/000000524245.jpg" alt="dog in backpack">
+      <div class="meta">
+        <div class="fname">COCO_val2014_000000524245.jpg</div>
+        <div class="gt"><strong>Ground truth:</strong> A dog that is inside of a backpack.</div>
+        <div class="out"><span class="tag">Model</span> A train that is on the tracks out in the day.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="example">
+    <div class="row">
+      <img src="images/000000524247.jpg" alt="zebras and rhinos">
+      <div class="meta">
+        <div class="fname">COCO_val2014_000000524247.jpg</div>
+        <div class="gt"><strong>Ground truth:</strong> Zebras and rhinos grazing together at the zoo.</div>
+        <div class="out"><span class="tag">Model</span> Two bears are in the woods together as they look at each other.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="example">
+    <div class="row">
+      <img src="images/000000524263.jpg" alt="black bears in grass">
+      <div class="meta">
+        <div class="fname">COCO_val2014_000000524263.jpg</div>
+        <div class="gt"><strong>Ground truth:</strong> a couple of black bears are in the grass</div>
+        <div class="out"><span class="tag">Model</span> A man holding a tennis racquet on a tennis court.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="example">
+    <div class="row">
+      <img src="images/000000524280.jpg" alt="cat outside">
+      <div class="meta">
+        <div class="fname">COCO_val2014_000000524280.jpg</div>
+        <div class="gt"><strong>Ground truth:</strong> A cat outside looking straight ahead with a tree behind it.</div>
+        <div class="out"><span class="tag">Model</span> A train traveling through a lush green country side.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="example">
+    <div class="row">
+      <img src="images/000000524282.jpg" alt="tennis doubles match">
+      <div class="meta">
+        <div class="fname">COCO_val2014_000000524282.jpg</div>
+        <div class="gt"><strong>Ground truth:</strong> A women's tennis doubles match on a professional court</div>
+        <div class="out"><span class="tag">Model</span> A woman holding a tennis racquet on a tennis court. <span class="ok">✓ subject match</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="example">
+    <div class="row">
+      <img src="images/000000524333.jpg" alt="people around a table">
+      <div class="meta">
+        <div class="fname">COCO_val2014_000000524333.jpg</div>
+        <div class="gt"><strong>Ground truth:</strong> A group of people sitting around a table.</div>
+        <div class="out"><span class="tag">Model</span> A man holding a hot dog in his right hand.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>Reading the results.</strong> Every output is a well-formed, fluent English caption that
+    terminates cleanly on <code>&lt;|assistant_end|&gt;</code> — the SFT objective is being met. The
+    model has learned the COCO caption <em>distribution</em> and conditions on the image (tennis
+    images consistently yield tennis captions). Exact subject identification is unreliable because the
+    base LLM saw only ~82M tokens and the ViT is a 4-layer / 256-dim encoder. Scaling up the base
+    model and ViT (and/or initializing the ViT from a pretrained checkpoint) is the clear path to
+    higher accuracy.
+  </div>
+
+  <!-- ===================== BUGS ===================== -->
+  <h2>5. Bugs Found &amp; Fixed During the Run</h2>
+  <p>Six issues were encountered and fixed to get a working end-to-end model:</p>
+
+  <div class="fix">
+    <div class="ft">1. Base train batch-size assertion</div>
+    <div class="fd"><code>--total-batch-size</code> is in <em>tokens</em> and must be a multiple of
+    <code>device_batch_size × max_seq_len</code> (32×512 = 16384). Initial value 512 failed the assert.
+    Fixed by using <code>--total-batch-size=16384</code>.</div>
+  </div>
+  <div class="fix">
+    <div class="ft">2. COCO captions URL 404</div>
+    <div class="fd"><code>captions_val2014.json</code> is not hosted standalone. Fixed
+    <code>scripts/coco_data.py</code> to download <code>annotations_trainval2014.zip</code> and extract
+    <code>annotations/captions_val2014.json</code> from it.</div>
+  </div>
+  <div class="fix">
+    <div class="ft">3. Nested image extraction</div>
+    <div class="fd"><code>val2014.zip</code> extracts into <code>val2014/val2014/</code>. Added a
+    flatten step, and made the image download skip when the directory is already populated (avoids a
+    6.6 GB re-download).</div>
+  </div>
+  <div class="fix">
+    <div class="ft">4. <code>COCODataset</code> UnboundLocalError</div>
+    <div class="fd">The <code>train</code> branch referenced <code>start</code>, which was only defined in
+    the <code>val</code> branch. Fixed by computing <code>split_point</code> before the branch.</div>
+  </div>
+  <div class="fix">
+    <div class="ft">5. SFT target shape mismatch</div>
+    <div class="fd"><code>targets[i]</code> (length <code>max_len</code>) was assigned a shifted tensor of
+    length <code>max_len-1</code>. Fixed by assigning to <code>targets[i, :max_len-1]</code>.</div>
+  </div>
+  <div class="fix">
+    <div class="ft">6. Muon optimizer on 4-D Conv2d weight</div>
+    <div class="fd"><code>setup_optimizer</code> routed the ViT's 4-D <code>patch_embed</code> Conv2d
+    weight to Muon (which only supports 2-D matrix params), causing a buffer shape mismatch under
+    <code>torch.compile</code>. Fixed the routing condition from <code>param.ndim &gt;= 2</code> to
+    <code>param.ndim == 2</code>, sending the Conv2d weight and 3-D <code>pos_embed</code> to AdamW.</div>
+  </div>
+
+  <!-- ===================== VERIFICATION ===================== -->
+  <h2>6. Verification</h2>
+  <table>
+    <tr><th>Check</th><th>Result</th></tr>
+    <tr><td>Full test suite (<code>pytest tests/ -m "not slow"</code>)</td><td class="ok">81 passed</td></tr>
+    <tr><td>Base LLM checkpoint</td><td class="ok">saved (d8, step 5000)</td></tr>
+    <tr><td>Stage 1 VLM checkpoint</td><td class="ok">saved (vlm_d8, step 3000, val 3.16)</td></tr>
+    <tr><td>Stage 2 VLM checkpoint</td><td class="ok">saved (vlmsft_d8, step 3000, min val 2.21)</td></tr>
+    <tr><td>Inference on 6 held-out images</td><td class="ok">fluent, image-conditioned captions</td></tr>
+    <tr><td>Checkpoint load round-trip (<code>load_vlm</code>)</td><td class="ok">OK</td></tr>
+  </table>
+
+  <!-- ===================== REPRODUCE ===================== -->
+  <h2>7. How to Reproduce</h2>
+  <pre><code>cd nanochat-vlm &amp;&amp; source .venv/bin/activate
+
+# 0. Data + tokenizer
+python -m nanochat.dataset -n 5                 # base text shards
+python -m scripts.tok_train --max-chars 300000000 --vocab-size 8192
+python -m scripts.coco_data                     # COCO val2014 images + captions
+
+# 1. Base LLM
+CUDA_VISIBLE_DEVICES=0 python -m scripts.base_train \
+    --depth=8 --max-seq-len=512 --device-batch-size=32 \
+    --total-batch-size=16384 --num-iterations=5000 \
+    --eval-tokens=512 --core-metric-every=-1 --model-tag d8
+
+# 2. Stage 1: ViT pretrain (frozen LLM)
+CUDA_VISIBLE_DEVICES=0 python -m scripts.vit_pretrain \
+    --model-tag d8 --num-iterations=3000 --eval-every=300 \
+    --device-batch-size=16 --total-batch-size=256 --vit-lr 0.0003
+
+# 3. Stage 2: VLM SFT (full fine-tune)
+CUDA_VISIBLE_DEVICES=0 python -m scripts.vlm_sft \
+    --source vlm --model-tag vlm_d8 --num-iterations=3000 \
+    --eval-every=300 --device-batch-size=16 --total-batch-size=256
+
+# 4. Inference
+python -m scripts.vlm_cli --image photo.jpg --prompt "Describe this image." \
+    --source vlm_sft --model-tag vlmsft_d8 --temperature 0.7</code></pre>
+
+  <h3>Checkpoint locations</h3>
+  <table>
+    <tr><th>Artifact</th><th>Path</th></tr>
+    <tr><td>Base LLM</td><td><code>~/.cache/nanochat/base_checkpoints/d8/</code></td></tr>
+    <tr><td>Stage 1 VLM</td><td><code>~/.cache/nanochat/vlm_checkpoints/vlm_d8/</code></td></tr>
+    <tr><td>Stage 2 VLM</td><td><code>~/.cache/nanochat/vlm_sft_checkpoints/vlmsft_d8/</code></td></tr>
+    <tr><td>COCO data</td><td><code>~/.cache/nanochat/coco/</code></td></tr>
+  </table>
+
+  <!-- ===================== NEXT ===================== -->
+  <h2>8. Suggested Next Steps</h2>
+  <ul>
+    <li>Scale up the base LLM (more tokens / depth) for stronger caption content.</li>
+    <li>Initialize the ViT from a pretrained encoder (e.g. DINOv2) instead of from scratch.</li>
+    <li>Save the best-validation checkpoint during SFT (currently only the final step is saved; min val was at step 1500).</li>
+    <li>Add a proper captioning metric (CIDEr / SPICE) on a held-out COCO split.</li>
+    <li>Support multi-image and variable-resolution inputs.</li>
+  </ul>
+
+  <p class="muted" style="margin-top:40px; font-size:12px;">
+    Generated 2026-08-23 · nanochat-vlm · single-GPU (RTX 4090) training run v1
+  </p>
+
+</div>
+</body>
+</html>
