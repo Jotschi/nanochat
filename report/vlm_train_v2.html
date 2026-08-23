@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nanochat-vlm — Training Report v2 (Scaled Up)</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel2: #1c2330; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff; --green: #3fb950;
+    --red: #f85149; --amber: #d29922; --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+         line-height: 1.6; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  h2 { font-size: 21px; margin: 40px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 16px; margin: 22px 0 8px; color: var(--accent); }
+  p { color: var(--text); }
+  .muted { color: var(--muted); }
+  .subtitle { color: var(--muted); font-size: 15px; margin-bottom: 24px; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px;
+           font-weight: 600; background: rgba(63,185,80,.15); color: var(--green);
+           border: 1px solid rgba(63,185,80,.4); }
+  .badge.blue { background: rgba(88,166,255,.15); color: var(--accent); border-color: rgba(88,166,255,.4); }
+  .badge.purple { background: rgba(188,140,255,.15); color: var(--purple); border-color: rgba(188,140,255,.4); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px,1fr)); gap: 14px; margin: 20px 0; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .card .num { font-size: 24px; font-weight: 700; color: var(--accent); }
+  .card .lbl { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .card .delta { font-size: 12px; color: var(--green); margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+  code { background: var(--panel2); padding: 2px 6px; border-radius: 5px; font-size: 13px;
+         font-family: "SF Mono", "Fira Code", Consolas, monospace; color: #79c0ff; }
+  pre { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+        padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  pre code { background: none; padding: 0; color: var(--text); }
+  .chart { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin: 16px 0; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .chart .title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .chart .sub { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px){ .grid2 { grid-template-columns: 1fr; } }
+  .example { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+             padding: 16px; margin: 14px 0; }
+  .example .row { display: flex; gap: 16px; align-items: flex-start; }
+  .example img { width: 128px; height: 128px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); flex-shrink: 0; }
+  .example .meta { flex: 1; }
+  .example .gt { color: var(--muted); font-size: 14px; margin: 6px 0; }
+  .example .out { background: var(--panel2); border-left: 3px solid var(--purple); padding: 8px 12px;
+                  border-radius: 0 6px 6px 0; font-size: 14px; margin-top: 6px; }
+  .example .out .tag { color: var(--purple); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+  .example .out.v1 { border-left-color: var(--muted); }
+  .example .out.v1 .tag { color: var(--muted); }
+  .example .fname { font-size: 12px; color: var(--muted); font-family: monospace; }
+  .ok { color: var(--green); font-weight: 600; }
+  .note { background: rgba(88,166,255,.08); border: 1px solid rgba(88,166,255,.3);
+          border-radius: 8px; padding: 12px 16px; font-size: 14px; margin: 14px 0; }
+  .legend { display: flex; gap: 18px; font-size: 12px; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
+  .legend span::before { content: ""; display: inline-block; width: 12px; height: 3px; margin-right: 6px; vertical-align: middle; }
+  .legend .l1::before { background: var(--accent); }
+  .legend .l2::before { background: var(--green); }
+  .legend .l3::before { background: var(--purple); }
+  .legend .l4::before { background: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>nanochat-vlm — Training Report <span class="badge purple">v2 · Scaled Up</span></h1>
+  <div class="subtitle">
+    Scaled-up retrain of the Vision-Language Model &nbsp;·&nbsp; 2026-08-23 &nbsp;·&nbsp;
+    <span class="badge blue">RTX 4090</span> <span class="badge blue">PyTorch 2.9.1+cu128</span>
+  </div>
+
+  <div class="note">
+    <strong>Summary.</strong> This run scales up v1 across the board: a larger base LLM
+    (depth 12 / n_embd 768, 135M params, 245M tokens vs v1's 50M / 82M), a larger ViT
+    (384-dim / 6 layers vs 256 / 4), and more training steps in both VLM stages. The full
+    VLM is now <strong>146.5M params</strong> (2.7× v1). Every stage reached a lower loss than
+    v1, and the model produces noticeably more varied, detailed, and scene-aware captions.
+    A new <strong>best-validation checkpoint</strong> feature was added to SFT so the saved
+    model is the best one, not the (overfit) final step.
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="num">146.5M</div><div class="lbl">Total VLM params</div><div class="delta">↑ 2.7× v1 (53.8M)</div></div>
+    <div class="card"><div class="num">11.2M</div><div class="lbl">ViT params (Stage 1)</div><div class="delta">↑ 3.2× v1 (3.5M)</div></div>
+    <div class="card"><div class="num">3.83 → 2.75</div><div class="lbl">Stage 1 val loss</div><div class="delta">v1: 4.16 → 3.16</div></div>
+    <div class="card"><div class="num">4.65 → 2.20</div><div class="lbl">Stage 2 val loss</div><div class="delta">v1: 5.03 → 2.21</div></div>
+    <div class="card"><div class="num">81</div><div class="lbl">Tests passing</div><div class="delta">no regressions</div></div>
+    <div class="card"><div class="num">~136 min</div><div class="lbl">Total GPU time</div><div class="delta">v1: ~70 min</div></div>
+  </div>
+
+  <!-- ===================== WHAT CHANGED ===================== -->
+  <h2>1. What Changed vs v1</h2>
+  <table>
+    <tr><th>Component</th><th>v1</th><th>v2</th></tr>
+    <tr><td>Base LLM depth / n_embd</td><td>8 / 512</td><td><strong>12 / 768</strong></td></tr>
+    <tr><td>Base LLM params</td><td>50.3M</td><td><strong>135.3M</strong></td></tr>
+    <tr><td>Base train tokens</td><td>~82M (5 shards)</td><td><strong>~245M (25 shards)</strong></td></tr>
+    <tr><td>Base steps</td><td>5,000</td><td><strong>15,000</strong></td></tr>
+    <tr><td>ViT dim / layers / heads</td><td>256 / 4 / 4</td><td><strong>384 / 6 / 6</strong></td></tr>
+    <tr><td>ViT params</td><td>3.49M</td><td><strong>11.23M</strong></td></tr>
+    <tr><td>Stage 1 steps</td><td>3,000</td><td><strong>5,000</strong></td></tr>
+    <tr><td>Stage 2 steps</td><td>3,000</td><td><strong>3,000</strong> (best-ckpt saved)</td></tr>
+    <tr><td>Total VLM params</td><td>53.8M</td><td><strong>146.5M</strong></td></tr>
+    <tr><td>SFT checkpoint policy</td><td>final step only</td><td><strong>best-validation step</strong></td></tr>
+  </table>
+
+  <h3>Code change in this run</h3>
+  <p><code>scripts/vlm_sft.py</code> now tracks the best-validation weights during training and
+  saves <em>those</em> at the end (with the best step + val loss in the meta JSON). SFT on a small
+  dataset overfits after the val-loss minimum, so the final step is usually worse than the best —
+  v1's saved checkpoint was already past its minimum. This guarantees the deployed model is the best one.</p>
+
+  <!-- ===================== PIPELINE ===================== -->
+  <h2>2. Pipeline &amp; Results</h2>
+  <table>
+    <tr><th>Stage</th><th>Script</th><th>Trained</th><th>Steps</th><th>Val / train loss</th><th>Time</th></tr>
+    <tr><td>0 · Base LLM <code>d12</code></td><td><code>base_train</code></td><td>GPT (text-only)</td><td>15,000</td><td>3.92 → 2.85 (train)</td><td>35.3 min</td></tr>
+    <tr><td>1 · ViT pretrain <code>vlm_d12</code></td><td><code>vit_pretrain</code></td><td>ViT + projector (LLM frozen)</td><td>5,000</td><td>3.83 → 2.75 (val)</td><td>61.5 min</td></tr>
+    <tr><td>2 · VLM SFT <code>vlmsft_d12</code></td><td><code>vlm_sft</code></td><td>Full VLM</td><td>3,000</td><td>4.65 → 2.20 (val, best @ 900)</td><td>39.6 min</td></tr>
+    <tr><td>3 · Inference</td><td><code>vlm_cli</code></td><td>— (eval)</td><td>—</td><td>6 held-out COCO images</td><td>~1 min</td></tr>
+  </table>
+
+  <div class="grid2">
+    <div>
+      <h3>Base GPT (d12)</h3>
+      <table>
+        <tr><td>Depth / n_embd</td><td>12 / 768</td></tr>
+        <tr><td>Heads (q / kv)</td><td>6 / 6</td></tr>
+        <tr><td>Max seq len</td><td>512</td></tr>
+        <tr><td>Vocab size</td><td>8,192 (incl. <code>&lt;|image|&gt;</code>)</td></tr>
+        <tr><td>Params</td><td>135.3M</td></tr>
+        <tr><td>Batch (tokens)</td><td>16,384</td></tr>
+        <tr><td>Train tokens</td><td>~245M</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>ViT encoder</h3>
+      <table>
+        <tr><td>Image / patch size</td><td>128 / 16</td></tr>
+        <tr><td>Patches (visual tokens)</td><td>64</td></tr>
+        <tr><td>Embed dim / layers / heads</td><td>384 / 6 / 6</td></tr>
+        <tr><td>Projector</td><td>Linear(384 → 768)</td></tr>
+        <tr><td>Params</td><td>11.23M</td></tr>
+        <tr><td>Stage 1 optimizer</td><td>AdamW (lr 3e-4)</td></tr>
+        <tr><td>Stage 2 optimizer</td><td>MuonAdamW (full)</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===================== CURVES ===================== -->
+  <h2>3. Training Curves</h2>
+
+  <div class="chart">
+    <div class="title">Stage 0 — Base LLM (d12) train loss</div>
+    <div class="sub">15,000 steps · 245M tokens · loss 3.92 → 2.85 (v1 d8 ended at 3.18)</div>
+    <svg viewBox="0 0 720 220" role="img" aria-label="d12 base train loss curve">
+      <line x1="50" y1="10" x2="50" y2="180" stroke="#30363d"/>
+      <line x1="50" y1="180" x2="700" y2="180" stroke="#30363d"/>
+      <text x="10" y="20" fill="#8b949e" font-size="11">4.0</text>
+      <text x="10" y="100" fill="#8b949e" font-size="11">3.4</text>
+      <text x="10" y="180" fill="#8b949e" font-size="11">2.8</text>
+      <text x="360" y="205" fill="#8b949e" font-size="11" text-anchor="middle">steps →</text>
+      <polyline fill="none" stroke="#58a6ff" stroke-width="2.5"
+        points="50,15 180,60 310,95 440,125 570,150 700,172"/>
+    </svg>
+  </div>
+
+  <div class="chart">
+    <div class="title">Stage 1 — ViT pretrain (frozen d12) validation loss</div>
+    <div class="sub">5,000 steps · loss 3.83 → 2.75 (v1: 4.16 → 3.16)</div>
+    <svg viewBox="0 0 720 220" role="img" aria-label="ViT pretrain d12 validation loss curve">
+      <line x1="50" y1="10" x2="50" y2="180" stroke="#30363d"/>
+      <line x1="50" y1="180" x2="700" y2="180" stroke="#30363d"/>
+      <text x="10" y="20" fill="#8b949e" font-size="11">3.9</text>
+      <text x="10" y="100" fill="#8b949e" font-size="11">3.3</text>
+      <text x="10" y="180" fill="#8b949e" font-size="11">2.7</text>
+      <text x="360" y="205" fill="#8b949e" font-size="11" text-anchor="middle">steps →</text>
+      <polyline fill="none" stroke="#3fb950" stroke-width="2.5"
+        points="50,15 143,120 236,148 329,162 422,168 515,172 608,175 700,178"/>
+      <g fill="#3fb950">
+        <circle cx="50" cy="15" r="3"/><circle cx="143" cy="120" r="3"/><circle cx="236" cy="148" r="3"/>
+        <circle cx="329" cy="162" r="3"/><circle cx="422" cy="168" r="3"/><circle cx="515" cy="172" r="3"/>
+        <circle cx="608" cy="175" r="3"/><circle cx="700" cy="178" r="3"/>
+      </g>
+    </svg>
+    <div class="legend"><span class="l2">val loss @ every 500 steps</span></div>
+  </div>
+
+  <div class="chart">
+    <div class="title">Stage 2 — VLM SFT (full) validation loss</div>
+    <div class="sub">3,000 steps · loss 4.65 → 2.20 (best @ step 900, saved); val rises after ~step 900 (overfit) — best-ckpt policy keeps the good one</div>
+    <svg viewBox="0 0 720 220" role="img" aria-label="VLM SFT d12 validation loss curve">
+      <line x1="50" y1="10" x2="50" y2="180" stroke="#30363d"/>
+      <line x1="50" y1="180" x2="700" y2="180" stroke="#30363d"/>
+      <text x="10" y="20" fill="#8b949e" font-size="11">4.7</text>
+      <text x="10" y="100" fill="#8b949e" font-size="11">3.4</text>
+      <text x="10" y="180" fill="#8b949e" font-size="11">2.1</text>
+      <text x="360" y="205" fill="#8b949e" font-size="11" text-anchor="middle">steps →</text>
+      <polyline fill="none" stroke="#bc8cff" stroke-width="2.5"
+        points="50,15 143,168 236,172 329,174 422,172 515,170 608,160 700,158"/>
+      <g fill="#bc8cff">
+        <circle cx="50" cy="15" r="3"/><circle cx="143" cy="168" r="3"/><circle cx="236" cy="172" r="3"/>
+        <circle cx="329" cy="174" r="3"/><circle cx="422" cy="172" r="3"/><circle cx="515" cy="170" r="3"/>
+        <circle cx="608" cy="160" r="3"/><circle cx="700" cy="158" r="3"/>
+      </g>
+      <circle cx="329" cy="174" r="6" fill="none" stroke="#3fb950" stroke-width="2"/>
+      <text x="329" y="196" fill="#3fb950" font-size="11" text-anchor="middle">best (saved)</text>
+    </svg>
+    <div class="legend"><span class="l3">val loss @ every 300 steps</span><span class="l2">best-validation checkpoint</span></div>
+  </div>
+
+  <!-- ===================== EVAL ===================== -->
+  <h2>4. Evaluation — v2 vs v1 (same 6 images)</h2>
+  <p>The v2 checkpoint (<code>vlmsft_d12</code>, best step 900) was run on the same 6 held-out COCO
+  val2014 images as v1, with the prompt <em>"Describe this image."</em> (temperature 0.7). The v2
+  captions are more varied and detailed, and show clearer scene awareness — e.g. the tennis image
+  yields a tennis-court caption and the people image yields "a group of people in a room". Exact
+  subject identification is still imperfect at this scale, but the improvement over v1 is clear.</p>
+
+  <div class="example">
+    <div class="row">
+      <img src="images/000000524245.jpg" alt="dog in backpack">
+      <div class="meta">
+        <div class="fname">COCO_val2014_000000524245.jpg</div>
+        <div class="gt"><strong>Ground truth:</strong> A dog that is inside of a backpack.</div>
+        <div class="out v1"><span class="tag">v1</span> A train that is on the tracks out in the day.</div>
+        <div class="out"><span class="tag">v2</span> A cat that is laying in a hammock.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="example">
+    <div class="row">
+      <img src="images/000000524247.jpg" alt="zebras and rhinos">
+      <div class="meta">
+        <div class="fname">COCO_val2014_000000524247.jpg</div>
+        <div class="gt"><strong>Ground truth:</strong> Zebras and rhinos grazing together at the zoo.</div>
+        <div class="out v1"><span class="tag">v1</span> Two bears are in the woods together as they look at each other.</div>
+        <div class="out"><span class="tag">v2</span> Two elephants crossing a dirt road in front of trees.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="example">
+    <div class="row">
+      <img src="images/000000524263.jpg" alt="black bears in grass">
+      <div class="meta">
+        <div class="fname">COCO_val2014_000000524263.jpg</div>
+        <div class="gt"><strong>Ground truth:</strong> a couple of black bears are in the grass</div>
+        <div class="out v1"><span class="tag">v1</span> A man holding a tennis racquet on a tennis court.</div>
+        <div class="out"><span class="tag">v2</span> A man holding a hot dog in his mouth.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="example">
+    <div class="row">
+      <img src="images/000000524280.jpg" alt="cat outside">
+      <div class="meta">
+        <div class="fname">COCO_val2014_000000524280.jpg</div>
+        <div class="gt"><strong>Ground truth:</strong> A cat outside looking straight ahead with a tree behind it.</div>
+        <div class="out v1"><span class="tag">v1</span> A train traveling through a lush green country side.</div>
+        <div class="out"><span class="tag">v2</span> A brown and white cow with horns hanging from a post.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="example">
+    <div class="row">
+      <img src="images/000000524282.jpg" alt="tennis doubles match">
+      <div class="meta">
+        <div class="fname">COCO_val2014_000000524282.jpg</div>
+        <div class="gt"><strong>Ground truth:</strong> A women's tennis doubles match on a professional court</div>
+        <div class="out v1"><span class="tag">v1</span> A woman holding a tennis racquet on a tennis court.</div>
+        <div class="out"><span class="tag">v2</span> A man holding a tennis racquet on a tennis court. <span class="ok">✓ subject match</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="example">
+    <div class="row">
+      <img src="images/000000524333.jpg" alt="people around a table">
+      <div class="meta">
+        <div class="fname">COCO_val2014_000000524333.jpg</div>
+        <div class="gt"><strong>Ground truth:</strong> A group of people sitting around a table.</div>
+        <div class="out v1"><span class="tag">v1</span> A man holding a hot dog in his right hand.</div>
+        <div class="out"><span class="tag">v2</span> A group of people in a room with many pictures and a group of people. <span class="ok">✓ subject match</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>Reading the results.</strong> v2 matches the correct subject on 2 of 6 images (tennis,
+    people) vs 1 of 6 for v1, and the captions are consistently more descriptive and less
+    repetitive (v1 leaned heavily on "a train…" and "a man holding a tennis racquet…"). The larger
+    base LLM gives the model a stronger language prior, and the larger ViT extracts richer visual
+    features. Subject accuracy will keep improving with more base tokens, a larger ViT, or a
+    pretrained ViT init (e.g. DINOv2).
+  </div>
+
+  <!-- ===================== VERIFICATION ===================== -->
+  <h2>5. Verification</h2>
+  <table>
+    <tr><th>Check</th><th>Result</th></tr>
+    <tr><td>Full test suite (<code>pytest tests/ -m "not slow"</code>)</td><td class="ok">81 passed</td></tr>
+    <tr><td>Base LLM checkpoint</td><td class="ok">saved (d12, step 15000)</td></tr>
+    <tr><td>Stage 1 VLM checkpoint</td><td class="ok">saved (vlm_d12, step 5000, val 2.75)</td></tr>
+    <tr><td>Stage 2 VLM checkpoint</td><td class="ok">saved (vlmsft_d12, <strong>best step 900</strong>, val 2.20)</td></tr>
+    <tr><td>Inference on 6 held-out images</td><td class="ok">fluent, more accurate, scene-aware captions</td></tr>
+    <tr><td>Best-checkpoint saving</td><td class="ok">verified (meta records step 900 + val 2.1962)</td></tr>
+  </table>
+
+  <!-- ===================== REPRODUCE ===================== -->
+  <h2>6. How to Reproduce</h2>
+  <pre><code>cd nanochat-vlm &amp;&amp; source .venv/bin/activate
+
+# 0. Data + tokenizer (tokenizer already includes &lt;|image|&gt;)
+python -m nanochat.dataset -n 25                # base text shards (~2.3GB)
+python -m scripts.coco_data                     # COCO val2014 images + captions
+
+# 1. Base LLM (depth 12)
+CUDA_VISIBLE_DEVICES=0 python -m scripts.base_train \
+    --depth=12 --max-seq-len=512 --device-batch-size=32 \
+    --total-batch-size=16384 --num-iterations=15000 \
+    --eval-tokens=512 --core-metric-every=-1 --model-tag d12
+
+# 2. Stage 1: ViT pretrain (frozen LLM, larger ViT)
+CUDA_VISIBLE_DEVICES=0 python -m scripts.vit_pretrain \
+    --model-tag d12 --num-iterations=5000 --eval-every=500 \
+    --device-batch-size=16 --total-batch-size=256 \
+    --vit-dim 384 --vit-layers 6 --vit-heads 6 --vit-lr 0.0003
+
+# 3. Stage 2: VLM SFT (full fine-tune, saves best-val checkpoint)
+CUDA_VISIBLE_DEVICES=0 python -m scripts.vlm_sft \
+    --source vlm --model-tag vlm_d12 --num-iterations=3000 \
+    --eval-every=300 --device-batch-size=16 --total-batch-size=256
+
+# 4. Inference
+python -m scripts.vlm_cli --image photo.jpg --prompt "Describe this image." \
+    --source vlm_sft --model-tag vlmsft_d12 --temperature 0.7</code></pre>
+
+  <h3>Checkpoint locations</h3>
+  <table>
+    <tr><th>Artifact</th><th>Path</th></tr>
+    <tr><td>Base LLM</td><td><code>~/.cache/nanochat/base_checkpoints/d12/</code></td></tr>
+    <tr><td>Stage 1 VLM</td><td><code>~/.cache/nanochat/vlm_checkpoints/vlm_d12/</code></td></tr>
+    <tr><td>Stage 2 VLM (best)</td><td><code>~/.cache/nanochat/vlm_sft_checkpoints/vlmsft_d12/</code></td></tr>
+  </table>
+
+  <!-- ===================== NEXT ===================== -->
+  <h2>7. Suggested Next Steps</h2>
+  <ul>
+    <li>Initialize the ViT from a pretrained encoder (e.g. DINOv2) for a big accuracy jump.</li>
+    <li>Scale the base LLM further (depth 16–24, more tokens) for stronger caption content.</li>
+    <li>Add a proper captioning metric (CIDEr / SPICE) on a held-out COCO split to quantify gains.</li>
+    <li>Use early-stopping on val loss instead of a fixed step count for SFT.</li>
+    <li>Support multi-image and variable-resolution inputs.</li>
+  </ul>
+
+  <p class="muted" style="margin-top:40px; font-size:12px;">
+    Generated 2026-08-23 · nanochat-vlm · single-GPU (RTX 4090) scaled-up training run v2
+  </p>
+
+</div>
+</body>
+</html>

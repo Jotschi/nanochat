@@ -7,9 +7,10 @@
 > how to interact with the implementation. It is a living record; update it as the
 > implementation evolves.
 >
-> A full end-to-end training run (base LLM → ViT pretrain → VLM SFT → inference) was
+> Two full end-to-end training runs (base LLM → ViT pretrain → VLM SFT → inference) were
 > completed on a single RTX 4090. See [report/vlm_train_v1.html](../report/vlm_train_v1.html)
-> for the detailed training report, loss curves, and eval examples.
+> (v1, 54M params) and [report/vlm_train_v2.html](../report/vlm_train_v2.html) (v2, 146.5M
+> params, scaled up) for the detailed training reports, loss curves, and eval examples.
 
 ## 1. What was done
 
@@ -108,6 +109,24 @@ Checkpoints: `~/.cache/nanochat/{base_checkpoints/d8, vlm_checkpoints/vlm_d8, vl
 5. `vlm_sft.py`: SFT `targets[i]` shape mismatch — assign to `targets[i, :max_len-1]`.
 6. `vlm.py` `setup_optimizer`: 4-D Conv2d `patch_embed` weight was routed to Muon (2-D only) —
    changed routing to `param.ndim == 2` so Conv2d/pos_embed use AdamW.
+
+## 2c. Training run v2 — scaled up (2026-08-23, single RTX 4090)
+
+A scaled-up retrain. Details, loss curves, and v1-vs-v2 eval examples are in
+[report/vlm_train_v2.html](../report/vlm_train_v2.html).
+
+| Stage | Config | Steps | Result |
+|-------|--------|-------|--------|
+| Base LLM (`d12`) | depth 12, n_embd 768, seq 512, vocab 8192 | 15,000 (~245M tok) | loss 3.92 → 2.85 |
+| Stage 1 ViT pretrain (`vlm_d12`) | ViT 384/6/6, frozen LLM, AdamW 3e-4 | 5,000 | val loss 3.83 → 2.75 |
+| Stage 2 VLM SFT (`vlmsft_d12`) | full VLM (146.5M), MuonAdamW | 3,000 | val loss 4.65 → 2.20 (best @ 900, saved) |
+| Inference | `vlm_cli`, temp 0.7 | — | more varied, scene-aware captions (2/6 subject match vs v1's 1/6) |
+
+Checkpoints: `~/.cache/nanochat/{base_checkpoints/d12, vlm_checkpoints/vlm_d12, vlm_sft_checkpoints/vlmsft_d12}`.
+
+**Code change in this run:** `scripts/vlm_sft.py` now tracks the best-validation weights and saves
+those (with best step + val loss in meta) instead of the final step — SFT overfits past the val
+minimum, so the final checkpoint is usually worse than the best.
 
 ## 3. Cheat sheet
 

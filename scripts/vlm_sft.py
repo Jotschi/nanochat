@@ -241,6 +241,9 @@ def get_muon_momentum(it):
 # Training loop
 x, y_ids, y_targets = next(train_loader)  # prefetch first batch
 min_val_loss = float("inf")
+best_val_loss = float("inf")
+best_step = 0
+best_state = None  # CPU copy of the best-validation weights
 smooth_train_loss = 0
 ema_beta = 0.9
 total_training_time = 0
@@ -264,21 +267,31 @@ while True:
         print0(f"Step {step:05d} | Val loss: {val_loss:.4f}")
         if val_loss < min_val_loss:
             min_val_loss = val_loss
+        # Track the best-validation weights so we can save them at the end
+        # (SFT often overfits after the val-loss minimum, so the final step
+        # is not necessarily the best checkpoint).
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_step = step
+            best_state = {k: v.detach().cpu() for k, v in vlm.state_dict().items()}
+            print0(f"  -> new best val loss {best_val_loss:.4f} at step {best_step}")
         wandb_run.log({"step": step, "val/loss": val_loss})
         vlm.train()
 
-    # Save checkpoint at the end
+    # Save the best-validation checkpoint at the end
     if last_step:
         output_dirname = args.output_tag if args.output_tag else f"vlmsft_d{gpt_config.n_layer}"
         checkpoint_dir = os.path.join(get_base_dir(), "vlm_sft_checkpoints", output_dirname)
+        save_state = best_state if best_state is not None else vlm.state_dict()
         save_checkpoint(
             checkpoint_dir,
-            step,
-            vlm.state_dict(),
+            best_step if best_state is not None else step,
+            save_state,
             optimizer.state_dict(),
             {
-                "step": step,
-                "val_loss": val_loss,
+                "step": best_step if best_state is not None else step,
+                "val_loss": best_val_loss if best_state is not None else val_loss,
+                "final_val_loss": val_loss,
                 "gpt_config": gpt_config_kwargs,
                 "vit_config": vit_config_kwargs,
                 "image_token_id": image_token_id,
@@ -286,6 +299,7 @@ while True:
             },
             rank=ddp_rank,
         )
+        print0(f"Saved best checkpoint (step {best_step}, val loss {best_val_loss:.4f})")
         break
 
     # -------------------------------------------------------------------------
