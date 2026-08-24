@@ -161,11 +161,6 @@ Checkpoints (remote, under `/workspace/nanochat-vlm/.cache/nanochat/`):
   has ~15 distinct param shapes → fused-kernel recompiles). Encoder type stored in checkpoint
   meta so `load_vlm` rebuilds the right ViT and the CLI applies the right normalization.
 
-**Hardware note:** trained on a remote `NVIDIA H200 NVL` (140 GiB, sm_90) over SSH
-(`ssh -p 15021 defaultuser@infom1.apa.at`), all files under `/workspace/nanochat-vlm` (home is
-not persisted on that host). The H200 is shared with other users' jobs; the nanochat-vlm jobs
-use only ~13.5 GiB and run alongside them.
-
 ## 3. Cheat sheet
 
 All commands run from the repo root with the project venv active:
