@@ -21,7 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from nanochat.gpt import GPT, GPTConfig
-from nanochat.vit import ViT, ViTConfig
+from nanochat.vit import ViT, ViTConfig, DinoViT, DinoViTConfig
 from nanochat.common import COMPUTE_DTYPE
 
 
@@ -41,12 +41,22 @@ class VLM(nn.Module):
         yields: int tokens one at a time
     """
 
-    def __init__(self, gpt_config, vit_config, image_token_id):
+    def __init__(self, gpt_config, vit_config, image_token_id, encoder="vit"):
         super().__init__()
         self.gpt = GPT(gpt_config)
-        self.vit = ViT(vit_config, gpt_config.n_embd)
+        self.encoder = encoder
+        if encoder == "dinov2":
+            self.vit = DinoViT(vit_config, gpt_config.n_embd)
+        else:
+            self.vit = ViT(vit_config, gpt_config.n_embd)
         self.image_token_id = image_token_id
         self.n_visual_tokens = vit_config.n_patches
+
+    def freeze_vit_backbone(self):
+        """Freeze the ViT backbone (everything except the projector). Used in stage 1
+        with a pretrained DINOv2 encoder so only the projector is trained."""
+        for name, param in self.vit.named_parameters():
+            param.requires_grad = "projector" in name
 
     @property
     def config(self):
@@ -186,19 +196,6 @@ class VLM(nn.Module):
         gpt_x0_params = [self.gpt.x0_lambdas]
         gpt_smear_params = [self.gpt.smear_gate.weight, self.gpt.smear_lambda, self.gpt.backout_lambda]
 
-        # ViT params
-        # Muon only supports 2D matrix params. The Conv2d patch_embed weight is 4D
-        # (out, in, kH, kW) and must go to AdamW, not Muon.
-        vit_matrix_params = []
-        vit_embedding_params = []
-        for name, param in self.vit.named_parameters():
-            if 'pos_embed' in name:
-                vit_embedding_params.append(param)
-            elif param.ndim == 2:
-                vit_matrix_params.append(param)
-            else:
-                vit_embedding_params.append(param)
-
         # Scale the LR for the AdamW parameters by ∝1/√dmodel
         dmodel_lr_scale = (model_dim / 768) ** -0.5
 
@@ -210,21 +207,47 @@ class VLM(nn.Module):
             dict(kind='adamw', params=gpt_resid_params, lr=scalar_lr * 0.01, betas=(0.8, 0.95), eps=1e-10, weight_decay=0.05),
             dict(kind='adamw', params=gpt_x0_params, lr=scalar_lr, betas=(0.96, 0.95), eps=1e-10, weight_decay=0.0),
             dict(kind='adamw', params=gpt_smear_params, lr=0.2, betas=(0.8, 0.95), eps=1e-10, weight_decay=0.0),
-            # ViT AdamW group (pos_embed and small params)
-            dict(kind='adamw', params=vit_embedding_params, lr=vit_lr * dmodel_lr_scale, betas=(0.8, 0.995), eps=1e-10, weight_decay=0.01),
         ]
+
+        if self.encoder == "dinov2":
+            # DINOv2 backbone: route ALL params to AdamW (no Muon orthogonalization on
+            # pretrained weights). Group by shape so the fused AdamW kernel doesn't
+            # recompile per distinct shape.
+            by_shape = {}
+            for name, param in self.vit.named_parameters():
+                by_shape.setdefault(tuple(param.shape), []).append(param)
+            for shape in sorted(by_shape):
+                param_groups.append(dict(
+                    kind='adamw', params=by_shape[shape], lr=vit_lr * dmodel_lr_scale,
+                    betas=(0.9, 0.95), eps=1e-8, weight_decay=0.01, vit=True,
+                ))
+        else:
+            # From-scratch ViT: Muon for 2D matrix params, AdamW for the rest.
+            vit_matrix_params = []
+            vit_embedding_params = []
+            for name, param in self.vit.named_parameters():
+                if 'pos_embed' in name:
+                    vit_embedding_params.append(param)
+                elif param.ndim == 2:
+                    vit_matrix_params.append(param)
+                else:
+                    vit_embedding_params.append(param)
+            param_groups.append(dict(
+                kind='adamw', params=vit_embedding_params, lr=vit_lr * dmodel_lr_scale,
+                betas=(0.8, 0.995), eps=1e-10, weight_decay=0.01, vit=True,
+            ))
+            for shape in sorted({p.shape for p in vit_matrix_params}):
+                group_params = [p for p in vit_matrix_params if p.shape == shape]
+                param_groups.append(dict(
+                    kind='muon', params=group_params, lr=vit_lr,
+                    momentum=0.95, ns_steps=5, beta2=0.9, weight_decay=weight_decay, vit=True,
+                ))
+
         # GPT Muon groups (matrix params, grouped by shape)
         for shape in sorted({p.shape for p in gpt_matrix_params}):
             group_params = [p for p in gpt_matrix_params if p.shape == shape]
             param_groups.append(dict(
                 kind='muon', params=group_params, lr=matrix_lr,
-                momentum=0.95, ns_steps=5, beta2=0.9, weight_decay=weight_decay,
-            ))
-        # ViT Muon groups (matrix params, grouped by shape)
-        for shape in sorted({p.shape for p in vit_matrix_params}):
-            group_params = [p for p in vit_matrix_params if p.shape == shape]
-            param_groups.append(dict(
-                kind='muon', params=group_params, lr=vit_lr,
                 momentum=0.95, ns_steps=5, beta2=0.9, weight_decay=weight_decay,
             ))
 

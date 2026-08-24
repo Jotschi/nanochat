@@ -33,7 +33,7 @@ from nanochat.common import (compute_init, compute_cleanup, print0, DummyWandb,
                              COMPUTE_DTYPE, COMPUTE_DTYPE_REASON, is_ddp_initialized)
 from nanochat.checkpoint_manager import save_checkpoint, load_model, load_vlm
 from nanochat.gpt import GPTConfig
-from nanochat.vit import ViTConfig
+from nanochat.vit import ViTConfig, DinoViTConfig
 from nanochat.vlm import VLM
 from scripts.coco_data import COCODataset, collate_coco_batch, IMAGE_SIZE
 
@@ -47,12 +47,23 @@ parser.add_argument("--source", type=str, default="vlm", choices=["vlm", "base"]
                     help="where to load the starting VLM from")
 parser.add_argument("--model-tag", type=str, default=None, help="model tag to load")
 parser.add_argument("--model-step", type=int, default=None, help="model step to load")
+# Encoder choice (only used when --source=base; with --source=vlm it comes from the checkpoint)
+parser.add_argument("--encoder", type=str, default="vit", choices=["vit", "dinov2"],
+                    help="vision encoder (for --source=base)")
+parser.add_argument("--dinov2-weights", type=str, default="",
+                    help="path to dinov2_vitb14_pretrain.pth (for --source=base --encoder dinov2)")
 # ViT config (only used when --source=base, to build a fresh ViT)
 parser.add_argument("--image-size", type=int, default=128, help="ViT input image size")
 parser.add_argument("--patch-size", type=int, default=16, help="ViT patch size")
 parser.add_argument("--vit-dim", type=int, default=256, help="ViT embedding dim")
 parser.add_argument("--vit-layers", type=int, default=4, help="ViT num layers")
 parser.add_argument("--vit-heads", type=int, default=4, help="ViT num heads")
+# Image normalization: "unit" (from-scratch ViT) or "imagenet" (DINOv2)
+parser.add_argument("--normalize", type=str, default="unit", choices=["unit", "imagenet"],
+                    help="image normalization mode")
+# Scale the ViT LR by this factor (use <1 to gently fine-tune a pretrained DINOv2 backbone)
+parser.add_argument("--vit-lr-scale", type=float, default=1.0,
+                    help="multiplier applied to all ViT param-group LRs")
 # Training horizon
 parser.add_argument("--num-iterations", type=int, default=2000, help="number of optimization steps")
 # Batch sizes
@@ -75,6 +86,11 @@ parser.add_argument("--output-tag", type=str, default=None, help="output model t
 args = parser.parse_args()
 user_config = vars(args).copy()
 # -----------------------------------------------------------------------------
+
+# The DINOv2 backbone has many distinct param shapes; the fused AdamW kernel
+# recompiles per shape, so raise the dynamo recompile limit to avoid hitting it.
+import torch._dynamo
+torch._dynamo.config.cache_size_limit = 64
 
 # Compute init
 device_type = autodetect_device_type() if args.device_type == "" else args.device_type
@@ -104,9 +120,13 @@ if args.source == "vlm":
     gpt_config = vlm.config
     vit_config = vlm.vit.config
     image_token_id = vlm.image_token_id
+    encoder = vlm.encoder
     gpt_config_kwargs = asdict(gpt_config)
     vit_config_kwargs = asdict(vit_config)
-    print0(f"Loaded VLM from stage 1: depth={gpt_config.n_layer}, n_embd={gpt_config.n_embd}")
+    # DINOv2 checkpoints use ImageNet normalization
+    if encoder == "dinov2" and args.normalize == "unit":
+        args.normalize = "imagenet"
+    print0(f"Loaded VLM from stage 1: depth={gpt_config.n_layer}, n_embd={gpt_config.n_embd}, encoder={encoder}")
 else:
     # Build a fresh VLM on top of a base model
     base_model, tokenizer, base_meta = load_model("base", device, phase="train",
@@ -114,18 +134,27 @@ else:
     gpt_config = base_model.config
     vocab_size = tokenizer.get_vocab_size()
     image_token_id = tokenizer.encode_special("<|image|>")
-    vit_config = ViTConfig(
-        image_size=args.image_size, patch_size=args.patch_size,
-        embed_dim=args.vit_dim, n_layer=args.vit_layers, n_head=args.vit_heads,
-    )
+    encoder = args.encoder
+    if encoder == "dinov2":
+        assert args.dinov2_weights, "--dinov2-weights required when --encoder dinov2"
+        vit_config = DinoViTConfig(weights_path=args.dinov2_weights)
+        if args.normalize == "unit":
+            args.normalize = "imagenet"
+    else:
+        vit_config = ViTConfig(
+            image_size=args.image_size, patch_size=args.patch_size,
+            embed_dim=args.vit_dim, n_layer=args.vit_layers, n_head=args.vit_heads,
+        )
     gpt_config_kwargs = asdict(gpt_config)
     vit_config_kwargs = asdict(vit_config)
     with torch.device("meta"):
-        vlm = VLM(GPTConfig(**gpt_config_kwargs), vit_config, image_token_id)
+        vlm = VLM(GPTConfig(**gpt_config_kwargs), vit_config, image_token_id, encoder=encoder)
     vlm.to_empty(device=device)
     vlm.gpt.init_weights()
     vlm.vit.init_weights()
     vlm.gpt.load_state_dict(base_model.state_dict(), strict=True, assign=True)
+    if encoder == "dinov2":
+        vlm.vit.load_dinov2_weights(args.dinov2_weights)
     del base_model
     print0(f"Built fresh VLM on base model: depth={gpt_config.n_layer}, n_embd={gpt_config.n_embd}")
 
@@ -144,9 +173,12 @@ optimizer = vlm.setup_optimizer(
     vit_lr=args.vit_lr,
     weight_decay=0.0,
 )
-# Override initial LR as a fraction of base
+# Override initial LR as a fraction of base; scale ViT groups by vit_lr_scale
+# (use <1 to gently fine-tune a pretrained DINOv2 backbone)
 for group in optimizer.param_groups:
     group["lr"] = group["lr"] * args.init_lr_frac
+    if group.get("vit", False):
+        group["lr"] = group["lr"] * args.vit_lr_scale
     group["initial_lr"] = group["lr"]
 
 # GradScaler for fp16
@@ -197,7 +229,7 @@ def vlm_data_generator(dataset, buffer_size=100):
             cursor += ddp_world_size
             if cursor >= n:
                 cursor = cursor % n
-        images, captions = collate_coco_batch(rows, args.image_size)
+        images, captions = collate_coco_batch(rows, vit_config.image_size, args.normalize)
         # Render each conversation
         rendered = [render_image_conversation(c) for c in captions]
         max_len = max(len(ids) for ids, _ in rendered)
@@ -294,6 +326,7 @@ while True:
                 "final_val_loss": val_loss,
                 "gpt_config": gpt_config_kwargs,
                 "vit_config": vit_config_kwargs,
+                "encoder": encoder,
                 "image_token_id": image_token_id,
                 "user_config": user_config,
             },

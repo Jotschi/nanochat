@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nanochat-vlm — v3: DINOv2 Pretrained Encoder (H200)</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel2: #1c2128; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff; --green: #3fb950;
+    --red: #f85149; --yellow: #d29922; --purple: #bc8cff; --orange: #ffa657;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    line-height:1.6; }
+  .wrap { max-width:1080px; margin:0 auto; padding:32px 24px 80px; }
+  h1 { font-size:2rem; margin:0 0 4px; }
+  h2 { font-size:1.4rem; margin:40px 0 12px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+  h3 { font-size:1.1rem; margin:24px 0 8px; color:var(--accent); }
+  .sub { color:var(--muted); margin-bottom:24px; }
+  .badge { display:inline-block; padding:2px 10px; border-radius:12px; font-size:0.75rem;
+    font-weight:600; margin-right:6px; }
+  .b-green { background:rgba(63,185,80,.15); color:var(--green); border:1px solid rgba(63,185,80,.4); }
+  .b-blue { background:rgba(88,166,255,.15); color:var(--accent); border:1px solid rgba(88,166,255,.4); }
+  .b-purple { background:rgba(188,140,255,.15); color:var(--purple); border:1px solid rgba(188,140,255,.4); }
+  .b-orange { background:rgba(255,166,87,.15); color:var(--orange); border:1px solid rgba(255,166,87,.4); }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:20px; margin:16px 0; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin:16px 0; }
+  .stat { background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:14px; }
+  .stat .label { color:var(--muted); font-size:0.75rem; text-transform:uppercase; letter-spacing:.5px; }
+  .stat .value { font-size:1.5rem; font-weight:700; margin-top:4px; }
+  .stat .value.green { color:var(--green); }
+  .stat .value.blue { color:var(--accent); }
+  .stat .value.purple { color:var(--purple); }
+  table { width:100%; border-collapse:collapse; margin:16px 0; font-size:0.9rem; }
+  th, td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--border); }
+  th { color:var(--muted); font-weight:600; font-size:0.78rem; text-transform:uppercase; letter-spacing:.5px; }
+  tr:hover td { background:rgba(88,166,255,.04); }
+  code { background:var(--panel2); padding:2px 6px; border-radius:4px; font-size:0.85em;
+    font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace; color:var(--orange); }
+  pre { background:#010409; border:1px solid var(--border); border-radius:8px; padding:16px;
+    overflow-x:auto; font-size:0.82rem; line-height:1.5; }
+  pre code { background:none; padding:0; color:#c9d1d9; }
+  .comment { color:#8b949e; }
+  .img-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; margin:16px 0; }
+  .img-card { background:var(--panel2); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .img-card img { width:100%; display:block; }
+  .img-card .cap { padding:12px; }
+  .img-card .cap .id { color:var(--muted); font-size:0.75rem; font-family:monospace; }
+  .gt { color:var(--green); font-size:0.85rem; margin-top:6px; }
+  .pred { font-size:0.85rem; margin-top:4px; }
+  .pred .tag { font-weight:700; font-size:0.72rem; padding:1px 6px; border-radius:4px; margin-right:4px; }
+  .tag-v1 { background:rgba(248,81,73,.15); color:var(--red); }
+  .tag-v2 { background:rgba(210,153,34,.15); color:var(--yellow); }
+  .tag-v3 { background:rgba(63,185,80,.15); color:var(--green); }
+  .good { color:var(--green); }
+  .bad { color:var(--red); }
+  .ok { color:var(--yellow); }
+  .callout { border-left:3px solid var(--accent); background:rgba(88,166,255,.06);
+    padding:12px 16px; border-radius:0 6px 6px 0; margin:16px 0; }
+  .callout.green { border-color:var(--green); background:rgba(63,185,80,.06); }
+  .callout.orange { border-color:var(--orange); background:rgba(255,166,87,.06); }
+  .callout.purple { border-color:var(--purple); background:rgba(188,140,255,.06); }
+  .callout .title { font-weight:700; margin-bottom:4px; }
+  .chart { background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:16px; margin:16px 0; }
+  .chart svg { width:100%; height:auto; display:block; }
+  .legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:8px; font-size:0.8rem; color:var(--muted); }
+  .legend span::before { content:""; display:inline-block; width:12px; height:3px; margin-right:6px; vertical-align:middle; }
+  .lg-v1::before { background:var(--red); }
+  .lg-v2::before { background:var(--yellow); }
+  .lg-v3::before { background:var(--green); }
+  .lg-base::before { background:var(--accent); }
+  .footer { margin-top:48px; padding-top:16px; border-top:1px solid var(--border); color:var(--muted); font-size:0.8rem; }
+  .win { color:var(--green); font-weight:700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>nanochat-vlm — v3: DINOv2 Pretrained Encoder</h1>
+<p class="sub">
+  <span class="badge b-purple">DINOv2 ViT-B/14</span>
+  <span class="badge b-green">6/6 correct subjects</span>
+  <span class="badge b-blue">NVIDIA H200</span>
+  <span class="badge b-orange">~147M params</span>
+</p>
+
+<div class="callout green">
+  <div class="title">Headline result</div>
+  Swapping the from-scratch ViT for a <strong>DINOv2 ViT-B/14</strong> pretrained encoder
+  (frozen in Stage 1, gently fine-tuned at 0.1× LR in Stage 2) is a step change in quality.
+  The v3 model correctly identifies the main subject in <strong>all 6</strong> evaluation
+  images, whereas the from-scratch ViT models (v1/v2) mostly hallucinated unrelated objects.
+  It also reaches a lower validation loss at every stage (Stage 2 best: <strong>1.81</strong>
+  vs v2's 2.21).
+</div>
+
+<h2>1. What changed in v3</h2>
+<div class="card">
+  <p>v1 and v2 trained the ViT encoder <em>from scratch</em> on COCO. With only ~118k
+  training images and a small ViT, the encoder never learned robust visual features, so the
+  model produced fluent but wrong captions. v3 instead uses a <strong>DINOv2 ViT-B/14</strong>
+  backbone — 86M parameters pretrained on ~142M images (self-supervised DINO + iBOT) — which
+  provides strong, general-purpose visual features out of the box.</p>
+  <p>The training recipe adapts to the pretrained encoder:</p>
+  <ul>
+    <li><strong>Stage 1 (projector):</strong> the DINOv2 backbone is <em>frozen</em>; only the
+      589,824-parameter linear projector (768 → 768) is trained, mapping DINOv2 patch features
+      into the LLM's embedding space. The LLM is also frozen.</li>
+    <li><strong>Stage 2 (SFT):</strong> the LLM and projector train at full LR; the DINOv2
+      backbone is fine-tuned at <code>--vit-lr-scale 0.1</code> so its pretrained features are
+      adapted, not destroyed.</li>
+    <li><strong>Image normalization:</strong> DINOv2 expects ImageNet normalization
+      (mean 0.485/0.456/0.406, std 0.229/0.224/0.225) instead of the unit [0,1] scaling used
+      for the from-scratch ViT.</li>
+  </ul>
+</div>
+
+<h2>2. Hardware &amp; environment</h2>
+<div class="grid">
+  <div class="stat"><div class="label">GPU</div><div class="value blue">H200 NVL</div></div>
+  <div class="stat"><div class="label">VRAM</div><div class="value">140 GiB</div></div>
+  <div class="stat"><div class="label">Peak memory (SFT)</div><div class="value">13.5 GiB</div></div>
+  <div class="stat"><div class="label">Python</div><div class="value">3.12.3</div></div>
+  <div class="stat"><div class="label">PyTorch</div><div class="value">2.9.1+cu128</div></div>
+  <div class="stat"><div class="label">Precision</div><div class="value">bf16</div></div>
+</div>
+<div class="callout">
+  <div class="title">Run on a remote H200</div>
+  v3 was trained on a remote <code>NVIDIA H200 NVL</code> (140 GiB, sm_90) over SSH, with all
+  files under <code>/workspace/nanochat-vlm</code> (the home directory is not persisted on that
+  host). The H200 is shared with other users' jobs, so the GPU shows ~99% utilization from
+  unrelated processes — the nanochat-vlm jobs use only ~13.5 GiB and run alongside them.
+  The d12 base LLM and tokenizer from v2 were reused; COCO and the DINOv2 weights were
+  downloaded directly on the remote.
+</div>
+
+<h2>3. Model architecture</h2>
+<div class="card">
+  <table>
+    <tr><th>Component</th><th>Config</th><th>Params</th><th>Stage 1</th><th>Stage 2</th></tr>
+    <tr><td>DINOv2 ViT-B/14 backbone</td><td>12 layers, dim 768, 12 heads, 14×14 patch, 224px</td><td>~86M</td><td class="bad">frozen</td><td class="ok">fine-tune @ 0.1×</td></tr>
+    <tr><td>Projector (Linear 768→768)</td><td>no bias</td><td>589,824</td><td class="good">trained</td><td class="good">trained</td></tr>
+    <tr><td>LLM (GPT d12)</td><td>12 layers, dim 768, 12 heads, 512 ctx</td><td>~135M</td><td class="bad">frozen</td><td class="good">trained</td></tr>
+    <tr><td><strong>Total</strong></td><td></td><td><strong>~147M</strong></td><td>0.59M trainable</td><td>all trainable</td></tr>
+  </table>
+  <p class="sub" style="margin:0">The DINOv2 backbone emits 256 patch tokens (16×16 grid) per
+  224px image; the CLS token is dropped and the patch features are projected into the LLM
+  embedding space. Position embeddings are bicubic-interpolated from DINOv2's 37×37 grid to
+  the 16×16 grid.</p>
+</div>
+
+<h2>4. Training results</h2>
+
+<h3>Stage 1 — Projector (DINOv2 + LLM frozen)</h3>
+<div class="grid">
+  <div class="stat"><div class="label">Steps</div><div class="value">2000</div></div>
+  <div class="stat"><div class="label">Train loss</div><div class="value">3.95 → 2.68</div></div>
+  <div class="stat"><div class="label">Val loss (min)</div><div class="value green">2.6770</div></div>
+  <div class="stat"><div class="label">Time</div><div class="value">44.6 min</div></div>
+</div>
+
+<h3>Stage 2 — VLM SFT (full, ViT @ 0.1× LR)</h3>
+<div class="grid">
+  <div class="stat"><div class="label">Steps</div><div class="value">3000</div></div>
+  <div class="stat"><div class="label">Train loss</div><div class="value">4.43 → 0.67</div></div>
+  <div class="stat"><div class="label">Val loss (best)</div><div class="value green">1.8058 @ step 900</div></div>
+  <div class="stat"><div class="label">Time</div><div class="value">93.5 min</div></div>
+</div>
+<div class="callout orange">
+  <div class="title">Best-checkpoint selection matters</div>
+  Stage 2 overfits after step 900: validation loss rises from 1.81 (step 900) to 2.00
+  (step 2700) while train loss keeps falling to 0.67. The best-validation checkpoint
+  (step 900, val 1.8058) is what is evaluated below — the final step would be noticeably worse.
+</div>
+
+<h3>Loss curves — all three runs</h3>
+<div class="chart">
+  <svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg">
+    <rect width="720" height="300" fill="transparent"/>
+    <!-- axes -->
+    <line x1="50" y1="20" x2="50" y2="250" stroke="#30363d" stroke-width="1"/>
+    <line x1="50" y1="250" x2="700" y2="250" stroke="#30363d" stroke-width="1"/>
+    <!-- y gridlines: loss 0..5 -->
+    <g font-size="10" fill="#8b949e" font-family="monospace">
+      <text x="10" y="254">0</text><text x="10" y="206">1</text><text x="10" y="158">2</text>
+      <text x="10" y="110">3</text><text x="10" y="62">4</text><text x="10" y="24">5</text>
+      <line x1="50" y1="206" x2="700" y2="206" stroke="#21262d" stroke-width="1"/>
+      <line x1="50" y1="158" x2="700" y2="158" stroke="#21262d" stroke-width="1"/>
+      <line x1="50" y1="110" x2="700" y2="110" stroke="#21262d" stroke-width="1"/>
+      <line x1="50" y1="62" x2="700" y2="62" stroke="#21262d" stroke-width="1"/>
+    </g>
+    <!-- Stage 1 val curves (x: 0..2000 -> 50..450) -->
+    <!-- v1 s1: 4.16->3.16 -->
+    <polyline points="50,62 450,106" fill="none" stroke="#f85149" stroke-width="2" stroke-dasharray="4 3" opacity="0.7"/>
+    <!-- v2 s1: 3.83->2.75 -->
+    <polyline points="50,73 450,122" fill="none" stroke="#d29922" stroke-width="2" stroke-dasharray="4 3" opacity="0.7"/>
+    <!-- v3 s1: 3.95->2.68 -->
+    <polyline points="50,69 450,125" fill="none" stroke="#3fb950" stroke-width="2.5" stroke-dasharray="4 3"/>
+    <!-- Stage 2 val curves (x: 0..3000 -> 450..700) -->
+    <!-- v1 s2: 5.03->2.21 (best) -->
+    <polyline points="450,20 700,140" fill="none" stroke="#f85149" stroke-width="2" opacity="0.7"/>
+    <!-- v2 s2: 4.65->2.20 (best) -->
+    <polyline points="450,35 700,141" fill="none" stroke="#d29922" stroke-width="2" opacity="0.7"/>
+    <!-- v3 s2: 4.43->1.81 (best) -->
+    <polyline points="450,45 700,159" fill="none" stroke="#3fb950" stroke-width="2.5"/>
+    <!-- markers -->
+    <circle cx="450" cy="125" r="3" fill="#3fb950"/>
+    <circle cx="700" cy="159" r="4" fill="#3fb950"/>
+    <text x="455" y="140" font-size="10" fill="#3fb950" font-family="monospace">v3 s1 min 2.68</text>
+    <text x="560" y="175" font-size="10" fill="#3fb950" font-family="monospace">v3 s2 best 1.81</text>
+    <!-- x labels -->
+    <g font-size="10" fill="#8b949e" font-family="monospace">
+      <text x="44" y="265">0</text><text x="230" y="265">1000</text><text x="440" y="265">2000</text>
+      <text x="560" y="265">2500</text><text x="675" y="265">3000</text>
+      <text x="200" y="285" fill="#8b949e">Stage 1 (projector)</text>
+      <text x="540" y="285" fill="#8b949e">Stage 2 (SFT)</text>
+    </g>
+  </svg>
+  <div class="legend">
+    <span class="lg-v1">v1 (scratch ViT, d8)</span>
+    <span class="lg-v2">v2 (scratch ViT, d12)</span>
+    <span class="lg-v3">v3 (DINOv2, d12)</span>
+  </div>
+</div>
+
+<h3>Comparison across runs</h3>
+<div class="card">
+  <table>
+    <tr><th>Run</th><th>Encoder</th><th>Base</th><th>Stage 1 val (min)</th><th>Stage 2 val (best)</th><th>Params</th><th>GPU</th></tr>
+    <tr><td>v1</td><td>ViT from scratch</td><td>d8</td><td>3.16</td><td>2.21</td><td>53.8M</td><td>RTX 4090</td></tr>
+    <tr><td>v2</td><td>ViT from scratch</td><td>d12</td><td>2.75</td><td>2.20</td><td>146.5M</td><td>RTX 4090</td></tr>
+    <tr><td><strong>v3</strong></td><td><strong>DINOv2 ViT-B/14</strong></td><td>d12</td><td class="win">2.68</td><td class="win">1.81</td><td>~147M</td><td>H200</td></tr>
+  </table>
+  <p class="sub" style="margin:0">v3 beats v2 at both stages despite the same LLM size and
+  step counts — the entire gain comes from the pretrained visual encoder.</p>
+</div>
+
+<h2>5. Qualitative evaluation</h2>
+<p>Six COCO val2014 images, prompt <code>"Describe this image."</code> (temperature 0.7,
+top-k 50, 60 tokens). The DINOv2 model (v3) correctly identifies the main subject in every
+image; the from-scratch models (v1/v2) frequently hallucinate unrelated objects.</p>
+
+<div class="img-grid">
+
+  <div class="img-card">
+    <img src="images/000000524245.jpg" alt="dog in backpack">
+    <div class="cap">
+      <div class="id">COCO_val2014_000000524245</div>
+      <div class="gt">GT: A dog that is inside of a backpack.</div>
+      <div class="pred"><span class="tag tag-v1">v1</span><span class="bad">A train that is on the tracks out in the day.</span></div>
+      <div class="pred"><span class="tag tag-v2">v2</span><span class="bad">A cat that is laying in a hammock.</span></div>
+      <div class="pred"><span class="tag tag-v3">v3</span><span class="good">A dog that is in a purse hanging from a bag.</span></div>
+    </div>
+  </div>
+
+  <div class="img-card">
+    <img src="images/000000524247.jpg" alt="zebras and rhinos">
+    <div class="cap">
+      <div class="id">COCO_val2014_000000524247</div>
+      <div class="gt">GT: Zebras and rhinos grazing together at the zoo.</div>
+      <div class="pred"><span class="tag tag-v1">v1</span><span class="bad">Two bears are in the woods together as they look at each other.</span></div>
+      <div class="pred"><span class="tag tag-v2">v2</span><span class="bad">Two elephants crossing a dirt road in front of trees.</span></div>
+      <div class="pred"><span class="tag tag-v3">v3</span><span class="good">A herd of zebra eating hay from a ground with some zebras behind it.</span></div>
+    </div>
+  </div>
+
+  <div class="img-card">
+    <img src="images/000000524263.jpg" alt="black bears">
+    <div class="cap">
+      <div class="id">COCO_val2014_000000524263</div>
+      <div class="gt">GT: a couple of black bears are in the grass</div>
+      <div class="pred"><span class="tag tag-v1">v1</span><span class="bad">A man holding a tennis racquet on a tennis court.</span></div>
+      <div class="pred"><span class="tag tag-v2">v2</span><span class="bad">A man holding a hot dog in his mouth.</span></div>
+      <div class="pred"><span class="tag tag-v3">v3</span><span class="good">A black bear and a black bear are on a log by water.</span></div>
+    </div>
+  </div>
+
+  <div class="img-card">
+    <img src="images/000000524280.jpg" alt="cat outside">
+    <div class="cap">
+      <div class="id">COCO_val2014_000000524280</div>
+      <div class="gt">GT: A cat outside looking straight ahead with a tree behind it.</div>
+      <div class="pred"><span class="tag tag-v1">v1</span><span class="bad">A train traveling through a lush green country side.</span></div>
+      <div class="pred"><span class="tag tag-v2">v2</span><span class="bad">A brown and white cow with horns hanging from a post.</span></div>
+      <div class="pred"><span class="tag tag-v3">v3</span><span class="good">A cat that is laying down in the day.</span></div>
+    </div>
+  </div>
+
+  <div class="img-card">
+    <img src="images/000000524282.jpg" alt="tennis match">
+    <div class="cap">
+      <div class="id">COCO_val2014_000000524282</div>
+      <div class="gt">GT: A women's tennis doubles match on a professional court</div>
+      <div class="pred"><span class="tag tag-v1">v1</span><span class="ok">A woman holding a tennis racquet on a tennis court.</span></div>
+      <div class="pred"><span class="tag tag-v2">v2</span><span class="ok">A man holding a tennis racquet on a tennis court.</span></div>
+      <div class="pred"><span class="tag tag-v3">v3</span><span class="good">Two women on a court playing tennis on a tennis court.</span></div>
+    </div>
+  </div>
+
+  <div class="img-card">
+    <img src="images/000000524333.jpg" alt="people at table">
+    <div class="cap">
+      <div class="id">COCO_val2014_000000524333</div>
+      <div class="gt">GT: A group of people sitting around a table.</div>
+      <div class="pred"><span class="tag tag-v1">v1</span><span class="bad">A man holding a hot dog in his right hand.</span></div>
+      <div class="pred"><span class="tag tag-v2">v2</span><span class="ok">A group of people in a room with many pictures and a group of people.</span></div>
+      <div class="pred"><span class="tag tag-v3">v3</span><span class="good">A group of people sit at a table eating a meal.</span></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="callout green">
+  <div class="title">Score: v3 = 6/6, v2 = 2/6, v1 = 1/6</div>
+  Counting "correct main subject": v3 nails all six (dog, zebras, black bears, cat, women's
+  tennis, people at a table). v2 gets the tennis and the people-at-a-table; v1 only gets the
+  tennis. The pretrained encoder is the single biggest quality lever in this project.
+</div>
+
+<h2>6. DINOv2 integration details</h2>
+<div class="card">
+  <p>The DINOv2 ViT-B/14 was ported into the nanochat codebase as a new encoder option
+  (<code>encoder="dinov2"</code>) alongside the original from-scratch ViT. Key implementation
+  points:</p>
+  <ul>
+    <li><strong>Architecture match:</strong> DINOv2 uses LayerNorm + GELU + a fused QKV
+      projection + per-block LayerScale (<code>ls1.gamma</code>/<code>ls2.gamma</code>), which
+      differs from nanochat's RMSNorm + relu² + separate QKV. A dedicated
+      <code>DinoViT</code> class reproduces the DINOv2 block structure so the pretrained
+      weights load 1:1 (175 keys, no missing/unexpected).</li>
+    <li><strong>Position embeddings:</strong> DINOv2 stores <code>pos_embed</code> for a 37×37
+      grid (518px input). For 224px input (16×16 = 256 patches) it is bicubic-interpolated at
+      load time.</li>
+    <li><strong>Optimizer:</strong> the pretrained backbone is trained with AdamW (betas
+      0.9/0.95) rather than Muon — Muon's orthogonalization is tuned for from-scratch training
+      and would disturb the pretrained features. <code>torch._dynamo.config.cache_size_limit</code>
+      is raised to 64 because DINOv2 has ~15 distinct parameter shapes that each trigger a
+      fused-kernel recompile.</li>
+    <li><strong>Checkpointing:</strong> the encoder type is stored in the checkpoint metadata
+      so <code>load_vlm</code> rebuilds the correct ViT and the CLI applies the right image
+      normalization.</li>
+  </ul>
+</div>
+
+<h2>7. Reproduce</h2>
+<pre><code><span class="comment"># Remote H200 — all files under /workspace/nanochat-vlm (home is not persisted)</span>
+<span class="comment"># export NANOCHAT_BASE_DIR=/workspace/nanochat-vlm/.cache/nanochat</span>
+
+<span class="comment"># 0. Data: tokenizer + d12 base (reused from v2), COCO, DINOv2 weights</span>
+python -m scripts.coco_data --split val --image-size 224
+wget https://dl.fbaipublicfiles.com/dinov2/dinov2_vitb14/dinov2_vitb14_pretrain.pth \
+     -O $NANOCHAT_BASE_DIR/dinov2/dinov2_vitb14_pretrain.pth
+
+<span class="comment"># 1. Stage 1 — projector only (DINOv2 + LLM frozen)</span>
+python -m scripts.vit_pretrain --encoder dinov2 \
+  --dinov2-weights $NANOCHAT_BASE_DIR/dinov2/dinov2_vitb14_pretrain.pth \
+  --normalize imagenet --model-tag vlm_d12 --max-steps 2000 \
+  --device-batch-size 32 --grad-accum-steps 1 --max-seq-len 512
+
+<span class="comment"># 2. Stage 2 — SFT (LLM + projector full LR, DINOv2 @ 0.1x)</span>
+python -m scripts.vlm_sft --encoder dinov2 \
+  --dinov2-weights $NANOCHAT_BASE_DIR/dinov2/dinov2_vitb14_pretrain.pth \
+  --normalize imagenet --vit-lr-scale 0.1 --model-tag vlmsft_d12 \
+  --max-steps 3000 --device-batch-size 32 --grad-accum-steps 1 --max-seq-len 512
+
+<span class="comment"># 3. Evaluate</span>
+python -m scripts.vlm_cli --image &lt;img.jpg&gt; --prompt "Describe this image." \
+  --source vlm_sft --model-tag vlmsft_d12 --temperature 0.7 --max-tokens 60</code></pre>
+
+<h2>8. Summary</h2>
+<div class="card">
+  <table>
+    <tr><th>Metric</th><th>v1</th><th>v2</th><th>v3</th></tr>
+    <tr><td>Visual encoder</td><td>ViT from scratch</td><td>ViT from scratch</td><td>DINOv2 ViT-B/14</td></tr>
+    <tr><td>Base LLM</td><td>d8 (3.18 val)</td><td>d12 (2.85 val)</td><td>d12 (reused)</td></tr>
+    <tr><td>Stage 1 val (min)</td><td>3.16</td><td>2.75</td><td class="win">2.68</td></tr>
+    <tr><td>Stage 2 val (best)</td><td>2.21</td><td>2.20</td><td class="win">1.81</td></tr>
+    <tr><td>Correct main subject (of 6)</td><td>1/6</td><td>2/6</td><td class="win">6/6</td></tr>
+    <tr><td>Total params</td><td>53.8M</td><td>146.5M</td><td>~147M</td></tr>
+    <tr><td>Training GPU</td><td>RTX 4090</td><td>RTX 4090</td><td>H200</td></tr>
+  </table>
+  <p class="sub" style="margin:0">Conclusion: a pretrained visual encoder is far more important
+  than model scale for captioning quality at this data budget. v3 (DINOv2) matches or beats v2
+  on loss at every stage and is dramatically better qualitatively (6/6 vs 2/6 correct subjects).</p>
+</div>
+
+<div class="footer">
+  nanochat-vlm v3 report · DINOv2 ViT-B/14 encoder · trained on NVIDIA H200 ·
+  base LLM d12 (135M) · COCO 2014 · generated from training logs and vlm_cli outputs.
+</div>
+
+</div>
+</body>
+</html>

@@ -32,7 +32,7 @@ from nanochat.common import (compute_init, compute_cleanup, print0, DummyWandb,
                              get_base_dir, autodetect_device_type, get_peak_flops,
                              COMPUTE_DTYPE, COMPUTE_DTYPE_REASON, is_ddp_initialized)
 from nanochat.checkpoint_manager import save_checkpoint, load_model
-from nanochat.vit import ViTConfig
+from nanochat.vit import ViTConfig, DinoViTConfig
 from nanochat.vlm import VLM
 from scripts.coco_data import COCODataset, collate_coco_batch, IMAGE_SIZE
 
@@ -44,12 +44,20 @@ parser.add_argument("--device-type", type=str, default="", help="cuda|cpu|mps (e
 # Base model to load (the frozen LLM)
 parser.add_argument("--model-tag", type=str, default=None, help="base model tag to load")
 parser.add_argument("--model-step", type=int, default=None, help="base model step to load")
-# ViT config
+# Encoder choice: "vit" (from scratch) or "dinov2" (pretrained DINOv2 ViT-B/14)
+parser.add_argument("--encoder", type=str, default="vit", choices=["vit", "dinov2"],
+                    help="vision encoder: from-scratch ViT or pretrained DINOv2")
+parser.add_argument("--dinov2-weights", type=str, default="",
+                    help="path to dinov2_vitb14_pretrain.pth (required if --encoder dinov2)")
+# ViT config (used for the from-scratch ViT; DINOv2 uses its own fixed config)
 parser.add_argument("--image-size", type=int, default=128, help="ViT input image size")
 parser.add_argument("--patch-size", type=int, default=16, help="ViT patch size")
 parser.add_argument("--vit-dim", type=int, default=256, help="ViT embedding dim")
 parser.add_argument("--vit-layers", type=int, default=4, help="ViT num layers")
 parser.add_argument("--vit-heads", type=int, default=4, help="ViT num heads")
+# Image normalization: "unit" (from-scratch ViT) or "imagenet" (DINOv2)
+parser.add_argument("--normalize", type=str, default="unit", choices=["unit", "imagenet"],
+                    help="image normalization mode")
 # Training horizon
 parser.add_argument("--num-iterations", type=int, default=2000, help="number of optimization steps")
 # Batch sizes
@@ -68,6 +76,11 @@ parser.add_argument("--output-tag", type=str, default=None, help="output model t
 args = parser.parse_args()
 user_config = vars(args).copy()
 # -----------------------------------------------------------------------------
+
+# The DINOv2 backbone has many distinct param shapes; the fused AdamW kernel
+# recompiles per shape, so raise the dynamo recompile limit to avoid hitting it.
+import torch._dynamo
+torch._dynamo.config.cache_size_limit = 64
 
 # Compute init
 device_type = autodetect_device_type() if args.device_type == "" else args.device_type
@@ -98,12 +111,20 @@ print0(f"Loaded base model: depth={gpt_config.n_layer}, n_embd={gpt_config.n_emb
 print0(f"image_token_id={image_token_id}")
 
 # -----------------------------------------------------------------------------
-# Build the VLM: wrap the loaded GPT + a fresh ViT
-vit_config = ViTConfig(
-    image_size=args.image_size, patch_size=args.patch_size,
-    embed_dim=args.vit_dim, n_layer=args.vit_layers, n_head=args.vit_heads,
-)
-print0(f"ViT config: {vit_config} (n_patches={vit_config.n_patches})")
+# Build the VLM: wrap the loaded GPT + a vision encoder (from-scratch ViT or DINOv2)
+if args.encoder == "dinov2":
+    assert args.dinov2_weights, "--dinov2-weights required when --encoder dinov2"
+    vit_config = DinoViTConfig(weights_path=args.dinov2_weights)
+    # DINOv2 expects ImageNet normalization and 224px input
+    if args.normalize == "unit":
+        args.normalize = "imagenet"
+    print0(f"DINOv2 config: {vit_config} (n_patches={vit_config.n_patches})")
+else:
+    vit_config = ViTConfig(
+        image_size=args.image_size, patch_size=args.patch_size,
+        embed_dim=args.vit_dim, n_layer=args.vit_layers, n_head=args.vit_heads,
+    )
+    print0(f"ViT config: {vit_config} (n_patches={vit_config.n_patches})")
 
 # We reuse the loaded GPT directly (no copy) by constructing a VLM that shares it.
 # Build VLM on meta, then swap in the loaded GPT's state.
@@ -111,13 +132,18 @@ from nanochat.gpt import GPTConfig
 from dataclasses import asdict
 gpt_config_kwargs = asdict(gpt_config)
 with torch.device("meta"):
-    vlm = VLM(GPTConfig(**gpt_config_kwargs), vit_config, image_token_id)
+    vlm = VLM(GPTConfig(**gpt_config_kwargs), vit_config, image_token_id, encoder=args.encoder)
 vlm.to_empty(device=device)
 vlm.gpt.init_weights()
 vlm.vit.init_weights()
 # Copy the pretrained GPT weights into the VLM's GPT
 vlm.gpt.load_state_dict(base_model.state_dict(), strict=True, assign=True)
 del base_model  # free the standalone base model
+# For DINOv2, load the pretrained backbone weights and freeze it (train only the projector)
+if args.encoder == "dinov2":
+    vlm.vit.load_dinov2_weights(args.dinov2_weights)
+    vlm.freeze_vit_backbone()
+    print0("Loaded DINOv2 pretrained weights; backbone frozen (training projector only)")
 
 # Freeze the LLM, train only the ViT
 vlm.set_llm_trainable(False)
@@ -155,7 +181,7 @@ def coco_data_generator(dataset, buffer_size=100):
             if cursor >= n:
                 cursor = cursor % n
                 epoch += 1
-        images, captions = collate_coco_batch(rows, args.image_size)
+        images, captions = collate_coco_batch(rows, vit_config.image_size, args.normalize)
         # Tokenize captions: prepend BOS, targets = ids shifted by 1
         bos = tokenizer.get_bos_token_id()
         ids_list = [tokenizer.encode(c, prepend=bos) for c in captions]
@@ -232,6 +258,7 @@ while True:
                 "val_loss": val_loss,
                 "gpt_config": gpt_config_kwargs,
                 "vit_config": asdict(vit_config),
+                "encoder": args.encoder,
                 "image_token_id": image_token_id,
                 "user_config": user_config,
             },

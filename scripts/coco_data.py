@@ -45,6 +45,9 @@ PARQUET_PATH = os.path.join(BASE_DIR, "coco_captions.parquet")
 IMAGE_SIZE = 128
 MEAN = 0.5
 STD = 0.5
+# ImageNet normalization (used by the DINOv2 encoder)
+IMAGENET_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
 def _download(url, dest):
@@ -137,34 +140,41 @@ def prepare_coco(max_images=None):
 # -----------------------------------------------------------------------------
 # Image loading / preprocessing
 
-def load_image(image_path, image_size=IMAGE_SIZE):
+def _normalize(x, normalize):
+    if normalize == "imagenet":
+        mean = torch.tensor(IMAGENET_MEAN).view(3, 1, 1)
+        std = torch.tensor(IMAGENET_STD).view(3, 1, 1)
+        return (x - mean) / std
+    # default: unit normalization to [-1, 1]
+    return (x - MEAN) / STD
+
+
+def load_image(image_path, image_size=IMAGE_SIZE, normalize="unit"):
     """
     Load an image from disk and preprocess it into a normalized tensor.
 
     Args:
         image_path: path to the image file
         image_size: target square size (resized to image_size x image_size)
+        normalize: "unit" ([-1,1], for from-scratch ViT) or "imagenet" (for DINOv2)
 
     Returns:
-        tensor of shape (3, image_size, image_size), float32, in [-1, 1]
+        tensor of shape (3, image_size, image_size), float32
     """
     img = Image.open(image_path).convert("RGB")
     img = img.resize((image_size, image_size), Image.BILINEAR)
     # (H, W, 3) uint8 -> (3, H, W) float in [0, 1]
     x = torch.from_numpy(np.asarray(img)).permute(2, 0, 1).float() / 255.0
-    # normalize to [-1, 1]
-    x = (x - MEAN) / STD
-    return x
+    return _normalize(x, normalize)
 
 
-def load_image_from_bytes(data, image_size=IMAGE_SIZE):
+def load_image_from_bytes(data, image_size=IMAGE_SIZE, normalize="unit"):
     """Same as load_image but from raw bytes (e.g. from a parquet column)."""
     import io
     img = Image.open(io.BytesIO(data)).convert("RGB")
     img = img.resize((image_size, image_size), Image.BILINEAR)
     x = torch.from_numpy(np.asarray(img)).permute(2, 0, 1).float() / 255.0
-    x = (x - MEAN) / STD
-    return x
+    return _normalize(x, normalize)
 
 
 # -----------------------------------------------------------------------------
@@ -207,20 +217,21 @@ class COCODataset:
         return os.path.join(IMAGES_DIR, image_path)
 
 
-def collate_coco_batch(batch, image_size=IMAGE_SIZE):
+def collate_coco_batch(batch, image_size=IMAGE_SIZE, normalize="unit"):
     """
     Collate a list of COCODataset rows into a batch of tensors.
 
     Args:
         batch: list of dicts from COCODataset
         image_size: target image size
+        normalize: "unit" or "imagenet"
 
     Returns:
         images: (B, 3, image_size, image_size) float tensor
         captions: list[str]
     """
     images = torch.stack([
-        load_image(os.path.join(IMAGES_DIR, r["image_path"]), image_size)
+        load_image(os.path.join(IMAGES_DIR, r["image_path"]), image_size, normalize)
         for r in batch
     ])
     captions = [r["caption"] for r in batch]

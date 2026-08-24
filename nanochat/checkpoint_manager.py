@@ -9,7 +9,7 @@ import torch
 
 from nanochat.common import get_base_dir
 from nanochat.gpt import GPT, GPTConfig
-from nanochat.vit import ViT, ViTConfig
+from nanochat.vit import ViT, ViTConfig, DinoViT, DinoViTConfig
 from nanochat.vlm import VLM
 from nanochat.tokenizer import get_tokenizer
 from nanochat.common import setup_default_logging
@@ -137,12 +137,13 @@ def build_vlm(checkpoint_dir, step, device, phase):
     _patch_missing_config_keys(gpt_config_kwargs)
     vit_config_kwargs = meta_data["vit_config"]
     image_token_id = meta_data["image_token_id"]
+    encoder = meta_data.get("encoder", "vit")  # old checkpoints default to from-scratch ViT
     log0(f"Building VLM with gpt config: {gpt_config_kwargs}")
-    log0(f"Building VLM with vit config: {vit_config_kwargs}")
+    log0(f"Building VLM with vit config: {vit_config_kwargs} (encoder={encoder})")
     gpt_config = GPTConfig(**gpt_config_kwargs)
-    vit_config = ViTConfig(**vit_config_kwargs)
+    vit_config = DinoViTConfig(**vit_config_kwargs) if encoder == "dinov2" else ViTConfig(**vit_config_kwargs)
     with torch.device("meta"):
-        vlm = VLM(gpt_config, vit_config, image_token_id)
+        vlm = VLM(gpt_config, vit_config, image_token_id, encoder=encoder)
     # Load the model state
     vlm.to_empty(device=device)
     vlm.gpt.init_weights()  # needed to init the rotary embeddings

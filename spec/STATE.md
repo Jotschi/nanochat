@@ -7,10 +7,13 @@
 > how to interact with the implementation. It is a living record; update it as the
 > implementation evolves.
 >
-> Two full end-to-end training runs (base LLM → ViT pretrain → VLM SFT → inference) were
-> completed on a single RTX 4090. See [report/vlm_train_v1.html](../report/vlm_train_v1.html)
-> (v1, 54M params) and [report/vlm_train_v2.html](../report/vlm_train_v2.html) (v2, 146.5M
-> params, scaled up) for the detailed training reports, loss curves, and eval examples.
+> Three full end-to-end training runs (base LLM → ViT pretrain → VLM SFT → inference) were
+> completed. v1 (54M) and v2 (146.5M, scaled up) ran on a single RTX 4090 with a from-scratch
+> ViT; v3 (~147M) ran on a remote H200 with a DINOv2 ViT-B/14 pretrained encoder. See
+> [report/vlm_train_v1.html](../report/vlm_train_v1.html),
+> [report/vlm_train_v2.html](../report/vlm_train_v2.html), and
+> [report/vlm_train_v3.html](../report/vlm_train_v3.html) for the detailed training reports,
+> loss curves, and eval examples.
 
 ## 1. What was done
 
@@ -127,6 +130,41 @@ Checkpoints: `~/.cache/nanochat/{base_checkpoints/d12, vlm_checkpoints/vlm_d12, 
 **Code change in this run:** `scripts/vlm_sft.py` now tracks the best-validation weights and saves
 those (with best step + val loss in meta) instead of the final step — SFT overfits past the val
 minimum, so the final checkpoint is usually worse than the best.
+
+## 2d. Training run v3 — DINOv2 pretrained encoder (2026-08-23, remote H200)
+
+Swapped the from-scratch ViT for a **DINOv2 ViT-B/14** pretrained encoder (86M params,
+self-supervised on ~142M images). Details, loss curves, and v1/v2/v3 eval examples are in
+[report/vlm_train_v3.html](../report/vlm_train_v3.html).
+
+| Stage | Config | Steps | Result |
+|-------|--------|-------|--------|
+| Base LLM (`d12`) | reused from v2 | — | loss 2.85 |
+| Stage 1 projector (`vlm_d12`) | DINOv2 frozen, LLM frozen, train 589,824-param projector, AdamW | 2,000 | val loss 3.95 → 2.68 (min 2.6770) |
+| Stage 2 VLM SFT (`vlmsft_d12`) | full VLM (~147M), DINOv2 @ 0.1× LR (AdamW), LLM+projector full LR | 3,000 | val loss 4.43 → 1.81 (best @ 900, saved) |
+| Inference | `vlm_cli`, temp 0.7 | — | **6/6 correct main subject** (vs v2's 2/6, v1's 1/6) |
+
+Checkpoints (remote, under `/workspace/nanochat-vlm/.cache/nanochat/`):
+`{base_checkpoints/d12, vlm_checkpoints/vlm_d12, vlm_sft_checkpoints/vlmsft_d12}`.
+
+**Code changes in this run:**
+- `nanochat/vit.py`: added `DinoViTConfig` + `DinoViT` (LayerNorm + GELU + fused QKV +
+  LayerScale, matching DINOv2 so the 175 pretrained keys load 1:1). `DinoViT` drops the CLS
+  token, bicubic-interpolates `pos_embed` from 37×37 → 16×16, and projects 256 patch features
+  into the LLM embedding space.
+- `nanochat/vlm.py`: `VLM(..., encoder="vit"|"dinov2")`; `freeze_vit_backbone()` (only the
+  projector trainable); `setup_optimizer()` trains the DINOv2 backbone with AdamW (betas
+  0.9/0.95) instead of Muon to preserve pretrained features.
+- `scripts/coco_data.py`: `--normalize {unit,imagenet}` — DINOv2 uses ImageNet mean/std.
+- `scripts/vit_pretrain.py` / `scripts/vlm_sft.py`: `--encoder`, `--dinov2-weights`,
+  `--normalize`, `--vit-lr-scale` args; `torch._dynamo.config.cache_size_limit = 64` (DINOv2
+  has ~15 distinct param shapes → fused-kernel recompiles). Encoder type stored in checkpoint
+  meta so `load_vlm` rebuilds the right ViT and the CLI applies the right normalization.
+
+**Hardware note:** trained on a remote `NVIDIA H200 NVL` (140 GiB, sm_90) over SSH
+(`ssh -p 15021 defaultuser@infom1.apa.at`), all files under `/workspace/nanochat-vlm` (home is
+not persisted on that host). The H200 is shared with other users' jobs; the nanochat-vlm jobs
+use only ~13.5 GiB and run alongside them.
 
 ## 3. Cheat sheet
 

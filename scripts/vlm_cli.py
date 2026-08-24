@@ -48,9 +48,11 @@ user_start, user_end = tokenizer.encode_special("<|user_start|>"), tokenizer.enc
 assistant_start = tokenizer.encode_special("<|assistant_start|>")
 image_token_id = vlm.image_token_id
 
-# Load and preprocess the image
-print(f"Loading image: {args.image}")
-image = load_image(args.image, IMAGE_SIZE).unsqueeze(0).to(device)  # (1, 3, H, W)
+# Load and preprocess the image (use the encoder's image size + normalization)
+img_size = vlm.vit.config.image_size
+normalize = "imagenet" if vlm.encoder == "dinov2" else "unit"
+print(f"Loading image: {args.image} (encoder={vlm.encoder}, size={img_size}, normalize={normalize})")
+image = load_image(args.image, img_size, normalize).unsqueeze(0).to(device)  # (1, 3, H, W)
 
 # Build the prompt token sequence:
 #   <bos> <user_start> <image> {prompt} <user_end> <assistant_start>
